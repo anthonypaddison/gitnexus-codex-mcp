@@ -65,7 +65,7 @@ Commands and gotchas live under **Repo reference** below and in **[CONTRIBUTING.
 
 This project is indexed by GitNexus as **GitNexus** (26675 symbols, 35395 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> If any GitNexus tool warns the index is stale, run `gitnexus analyze` in terminal first.
 
 ## Always Do
 
@@ -142,8 +142,12 @@ This project is indexed by GitNexus as **GitNexus** (26675 symbols, 35395 relati
 ```bash
 cd gitnexus && npm run dev                 # CLI: tsx watch mode
 cd gitnexus-web && npm run dev             # Web UI: Vite on port 5173
-npx gitnexus serve                         # HTTP API on port 4747 (from any indexed repo)
+gitnexus serve                             # HTTP API on port 4747 (from any indexed repo)
 ```
+
+Local-safe guidance: do not use remote/package-manager GitNexus commands such as
+`npx gitnexus` or `gitnexus@latest`. Use the local repo package or local
+`gitnexus` command only.
 
 ### Testing
 
@@ -155,7 +159,18 @@ npx gitnexus serve                         # HTTP API on port 4747 (from any ind
 
 **Web UI (`gitnexus-web/`)**
 - `npm test` — vitest (~200 tests)
-- `npm run test:e2e` — Playwright (7 spec files; requires `gitnexus serve` + `npm run dev`)
+- `npm run test:e2e:edge` — Edge Playwright E2E:
+  ```bash
+  cd gitnexus-web
+  npm run test:e2e:edge
+  ```
+  Playwright manages both the local GitNexus server and Vite server for this
+  command. The GitNexus server must come from the local repo path `../gitnexus`,
+  not a global `gitnexus` binary. `reuseExistingServer: false` is intentional:
+  the test should fail rather than attach to an unrelated server already running
+  on the same port. Do not run production services for this validation. If tests
+  fail, make only the minimal fix needed for the failing Edge E2E path.
+- `npm run test:e2e` — Playwright all-project run using the same managed local servers
 - `npx tsc -b --noEmit` — typecheck
 
 **Pre-commit hook** (`.husky/pre-commit`): formatting (prettier via lint-staged) + typecheck for staged packages. Tests do **not** run in pre-commit — CI only.
