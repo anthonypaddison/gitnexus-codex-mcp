@@ -30,11 +30,20 @@ if (missing.length > 0) {
 console.log(`Running ${ALL_CROSS_PLATFORM.length} platform-sensitive tests...\n`);
 
 try {
-  execFileSync('npx', ['vitest', 'run', ...ALL_CROSS_PLATFORM], {
+  const vitestBin = path.join(
+    ROOT,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'vitest.cmd' : 'vitest',
+  );
+  if (!fs.existsSync(vitestBin)) {
+    console.error('[local-safe] local vitest binary not found; refusing to use npx.');
+    process.exit(1);
+  }
+  execFileSync(vitestBin, ['run', ...ALL_CROSS_PLATFORM], {
     cwd: ROOT,
     stdio: 'inherit',
     timeout: 15 * 60 * 1000,
-    shell: true,
   });
 } catch (err: any) {
   if (err.killed || err.signal) {

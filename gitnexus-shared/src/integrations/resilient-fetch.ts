@@ -167,6 +167,8 @@ export async function resilientFetch(
   init: RequestInit | undefined,
   opts: ResilientFetchOptions = {},
 ): Promise<Response> {
+  assertLocalSafeFetchTarget(input);
+
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   const now = opts.now ?? (() => Date.now());
   const breaker =
@@ -276,4 +278,12 @@ export async function resilientFetch(
   // the function never falls off the end without producing `Promise<Response>`.
   /* c8 ignore next 2 */
   throw new Error('resilientFetch: retry loop terminated unexpectedly');
+}
+
+function assertLocalSafeFetchTarget(input: string | URL): void {
+  const parsed = typeof input === 'string' ? new URL(input) : input;
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host !== 'localhost' && host !== '127.0.0.1' && host !== '::1') {
+    throw new Error('[local-safe] resilientFetch only allows loopback URLs.');
+  }
 }

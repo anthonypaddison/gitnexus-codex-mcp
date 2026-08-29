@@ -77,7 +77,8 @@ describe.each(HOOKS)('hooks e2e ($name)', ({ name, path: hookPath }) => {
       const output = parseHookOutput(result.stdout);
       expect(output).not.toBeNull();
       expect(output!.additionalContext).toContain('stale');
-      expect(output!.additionalContext).toContain('npx gitnexus analyze');
+      expect(output!.additionalContext).toContain('gitnexus analyze');
+      expect(output!.additionalContext).not.toContain('npx');
     });
 
     it('stays silent when meta.json lastCommit matches HEAD', () => {
@@ -107,7 +108,7 @@ describe.each(HOOKS)('hooks e2e ($name)', ({ name, path: hookPath }) => {
       expect(output).toBeNull();
     });
 
-    it('includes --embeddings flag when previous index had embeddings', () => {
+    it('omits disabled embeddings even when legacy metadata reports embeddings', () => {
       fs.writeFileSync(
         path.join(gitNexusDir, 'meta.json'),
         JSON.stringify({
@@ -126,7 +127,7 @@ describe.each(HOOKS)('hooks e2e ($name)', ({ name, path: hookPath }) => {
 
       const output = parseHookOutput(result.stdout);
       expect(output).not.toBeNull();
-      expect(output!.additionalContext).toContain('--embeddings');
+      expect(output!.additionalContext).not.toContain('--embeddings');
     });
 
     it('treats missing meta.json as stale', () => {

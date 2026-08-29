@@ -207,7 +207,7 @@ interface OnboardingGuideProps {
 
 export const OnboardingGuide = ({ isPolling }: OnboardingGuideProps) => {
   const { t } = useTranslation('onboarding');
-  const primary = isDev ? 'npm run --prefix gitnexus serve' : 'npx gitnexus@latest serve';
+  const primary = isDev ? 'npm run --prefix gitnexus serve' : 'gitnexus serve';
   const termLabel = isDev ? t('guide.startBackend') : t('guide.terminal');
 
   // Step states: step 1 = copy command, step 2 = run/wait, step 3 = auto-connect
@@ -257,23 +257,6 @@ export const OnboardingGuide = ({ isPolling }: OnboardingGuideProps) => {
         >
           <TerminalWindow command={primary} label={termLabel} isActive={step1State === 'active'} />
 
-          {/* Secondary global-install option — production only */}
-          {!isDev && (
-            <>
-              <div className="my-3 flex items-center gap-3">
-                <div className="h-px flex-1 bg-border-subtle" />
-                <span className="text-[11px] tracking-widest text-text-muted uppercase">
-                  {t('guide.orInstallGlobally')}
-                </span>
-                <div className="h-px flex-1 bg-border-subtle" />
-              </div>
-              <TerminalWindow
-                command="npm install -g gitnexus && gitnexus serve"
-                label={t('guide.globalInstall')}
-                isActive={false}
-              />
-            </>
-          )}
         </StepRow>
 
         {/* Step 2 — Run and wait */}
@@ -300,14 +283,9 @@ export const OnboardingGuide = ({ isPolling }: OnboardingGuideProps) => {
         <Server className="h-3 w-3 shrink-0" />
         <span>
           {t('guide.requires')}{' '}
-          <a
-            href="https://nodejs.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent transition-colors hover:text-accent/80 hover:underline"
-          >
+          <span className="text-accent">
             Node.js {REQUIRED_NODE_VERSION}+
-          </a>
+          </span>
         </span>
         <span className="mx-1 text-border-default">·</span>
         <Terminal className="h-3 w-3 shrink-0" />

@@ -81,7 +81,10 @@ describe('classifyOutcome', () => {
 });
 
 describe('resilientFetch', () => {
-  const URL_STR = 'https://example.test/api/dispatch';
+  // The local-safe transport boundary permits loopback-only requests. Keeping
+  // this fixture on loopback preserves retry and circuit-breaker coverage
+  // without granting the test suite an external-network exception.
+  const URL_STR = 'http://127.0.0.1:4747/api/dispatch';
 
   beforeEach(() => __resetBreakerRegistry__());
 

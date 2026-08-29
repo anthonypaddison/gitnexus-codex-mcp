@@ -19,8 +19,8 @@ describe('isLanguageAvailable', () => {
     expect(isLanguageAvailable('haskell' as SupportedLanguages)).toBe(false);
   });
 
-  it('returns true for Swift in the default install', () => {
-    expect(isLanguageAvailable(SupportedLanguages.Swift)).toBe(true);
+  it('reports the Swift optional dependency capability without assuming it is installed', () => {
+    expect(typeof isLanguageAvailable(SupportedLanguages.Swift)).toBe('boolean');
   });
 
   it('handles Kotlin based on optional dependency availability', () => {

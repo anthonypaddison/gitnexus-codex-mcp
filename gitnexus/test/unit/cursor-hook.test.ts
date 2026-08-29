@@ -180,8 +180,8 @@ describe('Cursor hook source regressions', () => {
     }
   });
 
-  it('uses npx.cmd for Windows', () => {
-    expect(source).toContain('npx.cmd');
+  it('does not spawn npx for Windows', () => {
+    expect(source).not.toMatch(/(?:spawn|spawnSync)\([^\n]*['"]npx/);
   });
 
   it('validates cwd is an absolute path', () => {

@@ -329,7 +329,7 @@ export const RepoAnalyzer = ({ variant, onComplete, onCancel }: RepoAnalyzerProp
                 }
               }}
               disabled={isLoading}
-              placeholder="https://github.com/owner/repo"
+              placeholder="local-safe: remote clone disabled"
               autoComplete="url"
               spellCheck={false}
               className="flex-1 border-none bg-transparent font-mono text-sm text-text-primary outline-none placeholder:text-text-muted disabled:opacity-50"
@@ -381,7 +381,7 @@ export const RepoAnalyzer = ({ variant, onComplete, onCancel }: RepoAnalyzerProp
                 }
               }}
               disabled={isLoading}
-              placeholder="https://gitlab.com/owner/repo"
+              placeholder="local-safe: remote clone disabled"
               autoComplete="url"
               spellCheck={false}
               className="flex-1 border-none bg-transparent font-mono text-sm text-text-primary outline-none placeholder:text-text-muted disabled:opacity-50"

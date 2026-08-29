@@ -228,17 +228,15 @@ describe('CLI help surface', () => {
     expect(result.stdout).toContain('--gist');
   });
 
-  it('publish help names the registry, the token env var, and the opt-out behaviour', () => {
+  it('publish help states that the local-safe build disables outbound publishing', () => {
     const result = runHelp('publish');
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('--id <owner/repo>');
     expect(result.stdout).toContain('--skip-git');
-    // Discoverability contract: a contributor scanning `--help` must see
-    // (a) which registry this dispatches to, and (b) the env var that
-    // gates the opt-in. Both are part of the no-token contract.
-    expect(result.stdout).toContain('understand-quickly');
-    expect(result.stdout).toContain('UNDERSTAND_QUICKLY_TOKEN');
+    expect(result.stdout).toContain('Disabled in this local-safe build');
+    expect(result.stdout).not.toContain('understand-quickly');
+    expect(result.stdout).not.toContain('UNDERSTAND_QUICKLY_TOKEN');
   });
 
   it('analyze help includes the FTS repair option', () => {

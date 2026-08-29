@@ -29,8 +29,8 @@
       "helperText": "从这里获取 API Key：",
       "helperLinkLabel": "OpenAI Platform",
       "modelPlaceholder": "例如：gpt-4o、gpt-4-turbo、gpt-3.5-turbo",
-      "baseUrlPlaceholder": "https://api.openai.com/v1（默认）",
-      "baseUrlHint": "留空则使用默认 OpenAI API。可为代理或兼容 API 设置自定义 URL。"
+      "baseUrlPlaceholder": "local-safe：外部 API 已禁用",
+      "baseUrlHint": "此 local-safe 构建已禁用外部 LLM API 调用。"
     },
     "gemini": {
       "description": "使用 Google Gemini 模型。",
@@ -88,6 +88,6 @@
   "browseModels": "在这里浏览全部模型：",
   "openRouterModels": "OpenRouter Models",
   "zaiPlatform": "Z.AI Platform",
-  "glmCodingApi": "Coding API（默认）。通用 API 请使用 https://api.z.ai/api/paas/v4。",
+  "glmCodingApi": "此 local-safe 构建已禁用外部 GLM API 调用。",
   "privacyFull": "你的 API Key 只保存在此浏览器的会话存储中，关闭标签页后会清除。聊天时会直接发送给 LLM 提供商，你的代码不会离开本机。"
 }

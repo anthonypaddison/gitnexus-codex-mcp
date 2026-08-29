@@ -215,31 +215,12 @@ const OpenRouterModelCombobox = ({
  * Check connection to local Ollama instance
  */
 const checkOllamaStatus = async (
-  baseUrl: string,
+  _baseUrl: string,
 ): Promise<{ ok: boolean; error: string | null }> => {
-  try {
-    const response = await fetch(`${baseUrl}/api/tags`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    if (!response.ok) {
-      if (response.status === 0 || response.status === 404) {
-        return {
-          ok: false,
-          error: "Cannot connect to Ollama. Make sure it's running with `ollama serve`",
-        };
-      }
-      return { ok: false, error: `Ollama API error: ${response.status}` };
-    }
-
-    return { ok: true, error: null };
-  } catch (error) {
-    return {
-      ok: false,
-      error: "Cannot connect to Ollama. Make sure it's running with `ollama serve`",
-    };
-  }
+  return {
+    ok: false,
+    error: 'Local-safe build disables LLM connection checks.',
+  };
 };
 
 export const SettingsPanel = ({
@@ -673,14 +654,9 @@ export const SettingsPanel = ({
 
               <p className="text-xs text-text-muted">
                 {t('settings:azureHint')}{' '}
-                <a
-                  href="https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:underline"
-                >
+                <span className="text-accent">
                   {t('settings:azurePortal')}
-                </a>
+                </span>
               </p>
             </div>
           )}
@@ -693,14 +669,9 @@ export const SettingsPanel = ({
                 <p className="text-xs leading-relaxed text-amber-300">
                   <span className="font-medium">{t('settings:providers.ollama.quickStart')}</span>{' '}
                   {t('settings:providers.ollama.installFrom')}{' '}
-                  <a
-                    href="https://ollama.ai"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent hover:underline"
-                  >
+                  <span className="text-accent">
                     ollama.ai
-                  </a>
+                  </span>
                   {t('settings:providers.ollama.thenRun')}
                 </p>
                 <code className="mt-2 block rounded-lg bg-black/30 px-3 py-2 font-mono text-sm text-amber-200">
@@ -786,7 +757,7 @@ export const SettingsPanel = ({
                 value: settings.openrouter?.apiKey ?? '',
                 placeholder: t('settings:providers.openrouter.apiKeyPlaceholder'),
                 helperText: t('settings:providers.openrouter.helperText'),
-                helperLink: 'https://openrouter.ai/keys',
+                helperLink: '',
                 helperLinkLabel: t('settings:providers.openrouter.helperLinkLabel'),
                 isVisible: !!showApiKey['openrouter'],
                 onChange: (value) =>
@@ -815,14 +786,9 @@ export const SettingsPanel = ({
                 />
                 <p className="text-xs text-text-muted">
                   {t('settings:browseModels')}{' '}
-                  <a
-                    href="https://openrouter.ai/models"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent hover:underline"
-                  >
+                  <span className="text-accent">
                     {t('settings:openRouterModels')}
-                  </a>
+                  </span>
                 </p>
               </div>
             </ProviderConfigCard>
@@ -931,14 +897,9 @@ export const SettingsPanel = ({
                 </div>
                 <p className="text-xs text-text-muted">
                   {t('settings:providers.openai.helperText')}{' '}
-                  <a
-                    href="https://docs.z.ai"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent hover:underline"
-                  >
+                  <span className="text-accent">
                     {t('settings:zaiPlatform')}
-                  </a>
+                  </span>
                 </p>
               </div>
 
@@ -970,14 +931,14 @@ export const SettingsPanel = ({
                 </label>
                 <input
                   type="text"
-                  value={settings.glm?.baseUrl ?? 'https://api.z.ai/api/coding/paas/v4'}
+                  value={settings.glm?.baseUrl ?? ''}
                   onChange={(e) =>
                     setSettings((prev) => ({
                       ...prev,
                       glm: { ...prev.glm!, baseUrl: e.target.value },
                     }))
                   }
-                  placeholder="https://api.z.ai/api/coding/paas/v4"
+                  placeholder="local-safe: external API disabled"
                   className="w-full rounded-xl border border-border-subtle bg-elevated px-4 py-3 font-mono text-sm text-text-primary transition-all outline-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
                 />
                 <p className="text-xs text-text-muted">{t('settings:glmCodingApi')}</p>

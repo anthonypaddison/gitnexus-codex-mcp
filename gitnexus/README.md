@@ -2,6 +2,34 @@
 
 **Graph-powered code intelligence for AI agents.** Index any codebase into a knowledge graph, then query it via MCP or CLI.
 
+> **GitNexus-local-safe is a deliberately restricted local product.** Its hardened
+> `mcp-safe` server is bound to one existing local repository and its existing
+> `.gitnexus` index. It does not make runtime outbound network calls, consult a
+> global repository registry, or download packages or extensions. The upstream
+> examples below that use `npx`, multi-repository MCP, publishing, wiki LLMs,
+> remote embeddings, cloning, or hosted Web UI are not supported by this fork.
+
+## Local-safe contract
+
+Use a locally built checkout and the fixed-repository launcher. The supported
+MCP surface is read-only and contains only `query`, `context`, `detect_changes`,
+`impact`, `route_map`, `tool_map`, `shape_check`, and `api_impact`.
+
+The following are intentional security/product exclusions, not temporary
+failures: `npx` download-on-run; remote embeddings and model downloads; wiki
+generation or publishing through remote APIs; automatic remote cloning;
+automatic LadybugDB extension installation; global/multi-repository discovery;
+raw Cypher and mutation/rename tools; and a hosted Web UI. Missing optional
+local extensions are load-only and degrade locally rather than being installed.
+
+Build the checkout before registering the launcher:
+
+```bash
+npm run build
+GITNEXUS_SAFE_REPOSITORY=/absolute/path/to/repository \
+  node /absolute/path/to/gitnexus/scripts/gitnexus-local-safe-mcp.mjs
+```
+
 Works with **Cursor**, **Claude Code**, **Antigravity** (Google), **Codex**, **Windsurf**, **Cline**, **OpenCode**, and any MCP-compatible tool.
 
 [![npm version](https://img.shields.io/npm/v/gitnexus.svg)](https://www.npmjs.com/package/gitnexus)
@@ -66,6 +94,27 @@ claude mcp add gitnexus -- cmd /c npx -y gitnexus@latest mcp
 ```bash
 codex mcp add gitnexus -- npx -y gitnexus@latest mcp
 ```
+
+### Codex local-safe single repository
+
+`mcp-safe` is the hardened native mode for a locally built checkout. It binds
+one MCP process to one absolute Git repository root and that root's existing
+`.gitnexus/` index. It does not read the global registry, expose repository
+selection, raw Cypher, rename/group tools, resources, or prompts. It never
+downloads optional extensions at runtime; it may load an extension already
+available on the local machine.
+
+Build the checkout first, then run the deterministic launcher with the fixed
+repository path supplied by the MCP configuration:
+
+```bash
+GITNEXUS_SAFE_REPOSITORY=/absolute/path/to/repository \
+  node /absolute/path/to/gitnexus/scripts/gitnexus-local-safe-mcp.mjs
+```
+
+The hardened surface contains only `query`, `context`, `detect_changes`,
+`impact`, `route_map`, `tool_map`, `shape_check`, and `api_impact`. All are
+read-only and do not accept a `repo`, group, service, or worktree selector.
 
 ### Cursor / Windsurf
 
@@ -161,6 +210,7 @@ gitnexus analyze --max-file-size 1024  # Skip files larger than N KB (default: 5
 gitnexus analyze --worker-timeout 60  # Increase worker idle timeout for slow parses
 gitnexus analyze --wal-checkpoint-threshold 67108864  # 64 MiB. Control LadybugDB WAL auto-checkpoint threshold (default: 67108864 = 64 MiB; -1 keeps Ladybug stock ~16 MiB)
 gitnexus mcp                     # Start MCP server (stdio) — serves all indexed repos
+gitnexus mcp-safe --repo /absolute/path/to/repository  # Fixed-repository, read-only MCP
 gitnexus serve                   # Start local HTTP server (multi-repo) for web UI
 gitnexus index                   # Register an existing .gitnexus/ folder into the global registry
 gitnexus list                    # List all indexed repositories
@@ -183,6 +233,11 @@ gitnexus group status <name>     # Check staleness of repos in a group
 
 ## Remote Embeddings
 
+Remote embeddings are unavailable in GitNexus-local-safe. The
+`GITNEXUS_EMBEDDING_*` variables are ignored by the hardened process and no
+model download or HTTP embedding request is attempted. This section describes
+the upstream product only.
+
 Set these env vars to use a remote OpenAI-compatible `/v1/embeddings` endpoint instead of the local model:
 
 ```bash
@@ -196,6 +251,10 @@ gitnexus analyze . --embeddings
 Works with Infinity, vLLM, TEI, llama.cpp, Ollama, LM Studio, or OpenAI. When unset, local embeddings are used unchanged.
 
 ## Multi-Repo Support
+
+GitNexus-local-safe does not support a global registry or multi-repository MCP
+operation. `mcp-safe` operates on exactly the repository path configured for
+its launcher. The following upstream behaviour is unavailable in this fork.
 
 GitNexus supports indexing multiple repositories. Each `gitnexus analyze` registers the repo in a global registry (`~/.gitnexus/registry.json`). The MCP server serves all indexed repos automatically.
 
@@ -301,23 +360,20 @@ npm install -g gitnexus
 
 ### Analyze warns about unavailable FTS or VECTOR extensions
 
-GitNexus uses optional DuckDB extensions for BM25 and vector search. The `gitnexus serve` and MCP read paths only ever try to `LOAD` the extensions — they never block on a network install. The `analyze` command, by default, attempts one bounded out-of-process `INSTALL` if `LOAD` fails and proceeds even when that install times out, so the index is always written to disk; BM25/vector search degrade gracefully until the extensions become available.
+GitNexus uses optional DuckDB extensions for BM25 and vector search. The
+local-safe MCP always forces `GITNEXUS_LBUG_EXTENSION_INSTALL=load-only`,
+regardless of inherited configuration: it will only load an extension already
+present locally and otherwise degrades the matching search feature. It never
+spawns an installer or downloads an extension at runtime.
 
-Configure the behavior with two environment variables:
+`GITNEXUS_LBUG_EXTENSION_INSTALL=auto` is an upstream CLI-only opt-in and is
+not a supported configuration for the local-safe MCP. The hardened launcher
+overrides it. The relevant local-safe configuration is:
 
 | Variable | Values | Default | Effect |
 |----------|--------|---------|--------|
-| `GITNEXUS_LBUG_EXTENSION_INSTALL` | `auto`, `load-only`, `never` | `auto` | `auto` runs one bounded INSTALL if LOAD fails. `load-only` only uses already-installed extensions (recommended for offline / firewalled environments). `never` skips optional extensions entirely. |
-| `GITNEXUS_LBUG_EXTENSION_INSTALL_TIMEOUT_MS` | positive integer | `15000` | Wall-clock budget for the out-of-process `INSTALL` child before it is killed. |
+| `GITNEXUS_LBUG_EXTENSION_INSTALL` | `load-only` | `load-only` | Loads only an already-installed extension; missing extensions are unavailable. |
 | `GITNEXUS_WAL_CHECKPOINT_THRESHOLD` | integer `>= -1` | `67108864` (64 MiB) | LadybugDB WAL auto-checkpoint threshold during analyze (bytes). Auto-checkpoint remains enabled; `-1` keeps Ladybug's stock ~16 MiB. Larger thresholds reduce checkpoint frequency but increase the WAL size at rotation time — choose a smaller value on disk-constrained environments. |
-
-```bash
-# Offline/airgapped: never reach the network for extensions
-GITNEXUS_LBUG_EXTENSION_INSTALL=load-only npx gitnexus analyze
-
-# Slow network: give extension downloads more time
-GITNEXUS_LBUG_EXTENSION_INSTALL_TIMEOUT_MS=30000 npx gitnexus analyze
-```
 
 ### Analysis runs out of memory
 

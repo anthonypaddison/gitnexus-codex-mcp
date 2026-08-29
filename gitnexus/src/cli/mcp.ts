@@ -29,6 +29,10 @@
 
 import { installGlobalStdoutSentinel } from '../mcp/stdio-context.js';
 
+export interface McpSafeOptions {
+  repo: string;
+}
+
 export const mcpCommand = async () => {
   // Install the global stdout sentinel as the very first thing — before
   // ANY other module loads. The static-import closure above is leaf-only
@@ -82,4 +86,46 @@ export const mcpCommand = async () => {
 
   // Start MCP server (serves all repos, discovers new ones lazily)
   await startMCPServer(backend);
+};
+
+/**
+ * Start a single-repository MCP process. It validates the configured git root
+ * and its colocated .gitnexus metadata before opening the backend, never reads
+ * the global registry, and forces optional extension installation off.
+ */
+export const mcpSafeCommand = async (options: McpSafeOptions) => {
+  installGlobalStdoutSentinel();
+
+  if (!options?.repo) {
+    throw new Error('mcp-safe requires --repo <absolute-path>.');
+  }
+
+  const [{ realpath, lstat }, pathModule, { getGitRoot }, { startMCPServer }, { LocalBackend }] =
+    await Promise.all([
+      import('node:fs/promises'),
+      import('node:path'),
+      import('../storage/git.js'),
+      import('../mcp/server.js'),
+      import('../mcp/local/local-backend.js'),
+    ]);
+
+  if (!pathModule.isAbsolute(options.repo)) {
+    throw new Error('mcp-safe --repo must be an absolute path.');
+  }
+  const repoPath = await realpath(options.repo);
+  if (!(await lstat(repoPath)).isDirectory()) {
+    throw new Error(`mcp-safe --repo is not a directory: ${repoPath}`);
+  }
+  const gitRoot = getGitRoot(repoPath);
+  if (!gitRoot || (await realpath(gitRoot)) !== repoPath) {
+    throw new Error(`mcp-safe --repo must be a git repository root: ${repoPath}`);
+  }
+
+  // This is a process-level guard for all runtime extension callers. The
+  // hardened backend has no indexing path and no MCP tool can override it.
+  process.env.GITNEXUS_LBUG_EXTENSION_INSTALL = 'load-only';
+
+  const backend = new LocalBackend({ repositoryRoot: repoPath });
+  await backend.init();
+  await startMCPServer(backend, { hardened: true });
 };

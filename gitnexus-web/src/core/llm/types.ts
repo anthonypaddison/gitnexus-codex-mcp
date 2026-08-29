@@ -85,7 +85,7 @@ export interface OpenRouterConfig extends BaseProviderConfig {
   provider: 'openrouter';
   apiKey: string;
   model: string; // e.g., 'anthropic/claude-3.5-sonnet', 'openai/gpt-4-turbo'
-  baseUrl?: string; // defaults to https://openrouter.ai/api/v1
+  baseUrl?: string; // local-safe default is empty
 }
 
 /**
@@ -104,7 +104,7 @@ export interface GLMConfig extends BaseProviderConfig {
   provider: 'glm';
   apiKey: string;
   model: string; // e.g., 'GLM-4.7', 'GLM-4.5', 'GLM-4.5-Air', 'GLM-5'
-  baseUrl?: string; // defaults to https://api.z.ai/api/coding/paas/v4
+  baseUrl?: string; // local-safe default is empty
 }
 
 /**
@@ -206,7 +206,7 @@ export const DEFAULT_LLM_SETTINGS: LLMSettings = {
   glm: {
     apiKey: '',
     model: 'GLM-5',
-    baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+    baseUrl: '',
     temperature: 0.1,
   },
   deepseek: {

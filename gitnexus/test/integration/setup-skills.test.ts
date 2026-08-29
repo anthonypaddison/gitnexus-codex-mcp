@@ -103,7 +103,7 @@ describe('setupCommand skills integration', () => {
     expect(nestedInstalled).toContain('Directory Nested File');
   });
 
-  it('falls back to Codex config.toml and installs skills into ~/.agents/skills when codex CLI is unavailable', async () => {
+  it('writes a local Codex command and installs skills when the codex CLI is unavailable', async () => {
     await fs.mkdir(path.join(tempHome, '.codex'), { recursive: true });
     process.env.PATH = '';
 
@@ -111,7 +111,7 @@ describe('setupCommand skills integration', () => {
 
     const codexConfig = await fs.readFile(path.join(tempHome, '.codex', 'config.toml'), 'utf-8');
     expect(codexConfig).toContain('[mcp_servers.gitnexus]');
-    expect(codexConfig).toMatch(/gitnexus@\d+\.\d+\.\d+/);
+    expect(codexConfig).toContain('command = "gitnexus"');
 
     const codexSkill = await fs.readFile(
       path.join(tempHome, '.agents', 'skills', 'gitnexus-cli', 'SKILL.md'),

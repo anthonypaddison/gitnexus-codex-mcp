@@ -207,7 +207,7 @@ describe('resolveLLMConfig', () => {
     expect(config.model).toBe('');
   });
 
-  it('uses default OpenRouter model for openai provider', async () => {
+  it('does not configure a remote base URL by default', async () => {
     vi.doMock('../../src/storage/repo-manager.js', () => ({
       loadCLIConfig: vi.fn().mockResolvedValue({}),
     }));
@@ -217,7 +217,7 @@ describe('resolveLLMConfig', () => {
 
     expect(config.provider).toBe('openai');
     expect(config.model).toBe('minimax/minimax-m2.5');
-    expect(config.baseUrl).toBe('https://openrouter.ai/api/v1');
+    expect(config.baseUrl).toBe('');
   });
 
   it('CLI overrides take priority over saved config', async () => {
@@ -375,7 +375,7 @@ describe('wikiCommand --timeout validation', () => {
   });
 
   it.each(['', '   ', '0', '-1', 'abc', '3.14', tooLargeTimeout])(
-    'rejects invalid --timeout value %s before starting generation',
+    'does not start wiki generation for --timeout value %s',
     async (timeout) => {
       const generatorCtor = vi.fn().mockImplementation(() => ({
         run: vi.fn(),
@@ -428,18 +428,16 @@ describe('wikiCommand --timeout validation', () => {
         },
       }));
 
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const { wikiCommand } = await import('../../src/cli/wiki.js');
 
       await wikiCommand('/tmp/repo', { timeout });
 
       expect(process.exitCode).toBe(1);
       expect(generatorCtor).not.toHaveBeenCalled();
-      const expectedMessage =
-        timeout === tooLargeTimeout
-          ? '  Error: --timeout is too large\n'
-          : '  Error: --timeout must be a positive integer\n';
-      expect(consoleSpy).toHaveBeenCalledWith(expectedMessage);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[local-safe] Wiki generation is disabled because it requires LLM network calls.',
+      );
     },
   );
 });
@@ -463,7 +461,7 @@ describe('wikiCommand --retries validation', () => {
   });
 
   it.each(['', '   ', '0', '-1', 'abc', '3.14'])(
-    'rejects invalid --retries value %s before starting generation',
+    'does not start wiki generation for --retries value %s',
     async (retries) => {
       const generatorCtor = vi.fn().mockImplementation(() => ({
         run: vi.fn(),
@@ -516,14 +514,16 @@ describe('wikiCommand --retries validation', () => {
         },
       }));
 
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const { wikiCommand } = await import('../../src/cli/wiki.js');
 
       await wikiCommand('/tmp/repo', { retries });
 
       expect(process.exitCode).toBe(1);
       expect(generatorCtor).not.toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith('  Error: --retries must be a positive integer\n');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[local-safe] Wiki generation is disabled because it requires LLM network calls.',
+      );
     },
   );
 });
@@ -604,7 +604,7 @@ describe('wikiCommand --timeout mapping', () => {
       },
     }));
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { wikiCommand } = await import('../../src/cli/wiki.js');
     return {
       wikiCommand,
@@ -614,31 +614,40 @@ describe('wikiCommand --timeout mapping', () => {
     };
   }
 
-  it('maps --timeout seconds to requestTimeoutMs before constructing WikiGenerator', async () => {
+  it('does not construct WikiGenerator for a configured timeout', async () => {
     const harness = await loadWikiCommandHarness();
 
     await harness.wikiCommand('/tmp/repo', { timeout: '120' });
 
-    expect(harness.generatorCtor).toHaveBeenCalledTimes(1);
-    expect(harness.getCapturedConfig()?.requestTimeoutMs).toBe(120_000);
+    expect(harness.generatorCtor).not.toHaveBeenCalled();
+    expect(harness.getCapturedConfig()).toBeUndefined();
+    expect(harness.consoleSpy).toHaveBeenCalledWith(
+      '[local-safe] Wiki generation is disabled because it requires LLM network calls.',
+    );
   });
 
-  it('leaves requestTimeoutMs undefined when --timeout is omitted', async () => {
+  it('does not construct WikiGenerator without a timeout option', async () => {
     const harness = await loadWikiCommandHarness();
 
     await harness.wikiCommand('/tmp/repo', {});
 
-    expect(harness.generatorCtor).toHaveBeenCalledTimes(1);
-    expect(harness.getCapturedConfig()?.requestTimeoutMs).toBeUndefined();
+    expect(harness.generatorCtor).not.toHaveBeenCalled();
+    expect(harness.getCapturedConfig()).toBeUndefined();
+    expect(harness.consoleSpy).toHaveBeenCalledWith(
+      '[local-safe] Wiki generation is disabled because it requires LLM network calls.',
+    );
   });
 
-  it('maps --retries to maxAttempts before constructing WikiGenerator', async () => {
+  it('does not construct WikiGenerator for configured retries', async () => {
     const harness = await loadWikiCommandHarness();
 
     await harness.wikiCommand('/tmp/repo', { retries: '5' });
 
-    expect(harness.generatorCtor).toHaveBeenCalledTimes(1);
-    expect(harness.getCapturedConfig()?.maxAttempts).toBe(5);
+    expect(harness.generatorCtor).not.toHaveBeenCalled();
+    expect(harness.getCapturedConfig()).toBeUndefined();
+    expect(harness.consoleSpy).toHaveBeenCalledWith(
+      '[local-safe] Wiki generation is disabled because it requires LLM network calls.',
+    );
   });
 });
 
@@ -660,7 +669,7 @@ describe('wikiCommand timeout messaging', () => {
     process.exitCode = originalExitCode;
   });
 
-  it('surfaces a dedicated timeout message when wiki generation hits the configured timeout', async () => {
+  it('refuses wiki generation before a configured timeout can reach an LLM', async () => {
     const generatorCtor = vi.fn().mockImplementation(function () {
       return {
         run: vi
@@ -720,15 +729,15 @@ describe('wikiCommand timeout messaging', () => {
       },
     }));
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { wikiCommand } = await import('../../src/cli/wiki.js');
 
     await wikiCommand('/tmp/repo', { timeout: '120' });
 
     expect(process.exitCode).toBe(1);
-    expect(generatorCtor).toHaveBeenCalledTimes(1);
+    expect(generatorCtor).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith(
-      '\n  Timeout: LLM request timed out after 120s. Increase --timeout or omit it to disable the request timeout.\n',
+      '[local-safe] Wiki generation is disabled because it requires LLM network calls.',
     );
   });
 });

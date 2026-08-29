@@ -23,7 +23,7 @@ import {
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { GITNEXUS_TOOLS } from './tools.js';
+import { GITNEXUS_TOOLS, HARDENED_MCP_TOOLS, type ToolDefinition } from './tools.js';
 import { installGlobalStdoutSentinel } from './stdio-context.js';
 import type { LocalBackend } from './local/local-backend.js';
 import { getResourceDefinitions, getResourceTemplates, readResource } from './resources.js';
@@ -81,7 +81,15 @@ function getNextStepHint(toolName: string, args: Record<string, any> | undefined
  * Create a configured MCP Server with all handlers registered.
  * Transport-agnostic — caller connects the desired transport.
  */
-export function createMCPServer(backend: LocalBackend): Server {
+export interface MCPServerOptions {
+  tools?: ToolDefinition[];
+  hardened?: boolean;
+}
+
+export function createMCPServer(backend: LocalBackend, options: MCPServerOptions = {}): Server {
+  const tools = options.tools ?? (options.hardened ? HARDENED_MCP_TOOLS : GITNEXUS_TOOLS);
+  const toolNames = new Set(tools.map((tool) => tool.name));
+  const hardened = options.hardened === true;
   const require = createRequire(import.meta.url);
   const pkgVersion: string = require('../../package.json').version;
   const server = new Server(
@@ -100,7 +108,7 @@ export function createMCPServer(backend: LocalBackend): Server {
 
   // Handle list resources request
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const resources = getResourceDefinitions();
+    const resources = hardened ? [] : getResourceDefinitions();
     return {
       resources: resources.map((r) => ({
         uri: r.uri,
@@ -113,7 +121,7 @@ export function createMCPServer(backend: LocalBackend): Server {
 
   // Handle list resource templates request (for dynamic resources)
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
-    const templates = getResourceTemplates();
+    const templates = hardened ? [] : getResourceTemplates();
     return {
       resourceTemplates: templates.map((t) => ({
         uriTemplate: t.uriTemplate,
@@ -127,6 +135,18 @@ export function createMCPServer(backend: LocalBackend): Server {
   // Handle read resource request
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const { uri } = request.params;
+
+    if (hardened) {
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'text/plain',
+            text: 'Error: MCP resources are not available in hardened mode.',
+          },
+        ],
+      };
+    }
 
     try {
       const content = await readResource(uri, backend);
@@ -154,7 +174,7 @@ export function createMCPServer(backend: LocalBackend): Server {
 
   // Handle list tools request
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: GITNEXUS_TOOLS.map((tool) => ({
+    tools: tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,
@@ -167,9 +187,14 @@ export function createMCPServer(backend: LocalBackend): Server {
     const { name, arguments: args } = request.params;
 
     try {
+      if (!toolNames.has(name)) {
+        throw new Error(`Tool "${name}" is not available in this MCP mode.`);
+      }
       const result = await backend.callTool(name, args);
       const resultText = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-      const hint = getNextStepHint(name, args as Record<string, any> | undefined);
+      const hint = hardened
+        ? getHardenedNextStepHint(name, args as Record<string, any> | undefined)
+        : getNextStepHint(name, args as Record<string, any> | undefined);
 
       return {
         content: [
@@ -195,7 +220,9 @@ export function createMCPServer(backend: LocalBackend): Server {
 
   // Handle list prompts request
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-    prompts: [
+    prompts: hardened
+      ? []
+      : [
       {
         name: 'detect_impact',
         description:
@@ -221,11 +248,14 @@ export function createMCPServer(backend: LocalBackend): Server {
           },
         ],
       },
-    ],
+        ],
   }));
 
   // Handle get prompt request
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    if (hardened) {
+      throw new Error('MCP prompts are not available in hardened mode.');
+    }
     const { name, arguments: args } = request.params;
 
     if (name === 'detect_impact') {
@@ -281,11 +311,35 @@ Follow these steps:
   return server;
 }
 
+/** Create the fixed-repository, read-only MCP surface used by mcp-safe. */
+export function createHardenedMCPServer(backend: LocalBackend): Server {
+  return createMCPServer(backend, { tools: HARDENED_MCP_TOOLS, hardened: true });
+}
+
+function getHardenedNextStepHint(
+  toolName: string,
+  args: Record<string, any> | undefined,
+): string {
+  switch (toolName) {
+    case 'query':
+      return '\n\n---\n**Next:** use context({name: "<symbol_name>"}) to inspect a result symbol.';
+    case 'context':
+      return `\n\n---\n**Next:** use impact({target: "${args?.name || '<name>'}", direction: "upstream"}) to assess change risk.`;
+    case 'detect_changes':
+      return '\n\n---\n**Next:** use context({name: "<changed_symbol>"}) for high-risk changed symbols.';
+    default:
+      return '';
+  }
+}
+
 /**
  * Start the MCP server on stdio transport (for CLI use).
  */
-export async function startMCPServer(backend: LocalBackend): Promise<void> {
-  const server = createMCPServer(backend);
+export async function startMCPServer(
+  backend: LocalBackend,
+  options: MCPServerOptions = {},
+): Promise<void> {
+  const server = createMCPServer(backend, options);
 
   // Idempotent global sentinel install. cli/mcp.ts calls this first thing
   // (before warnMissingOptionalGrammars / backend.init can emit to stdout);

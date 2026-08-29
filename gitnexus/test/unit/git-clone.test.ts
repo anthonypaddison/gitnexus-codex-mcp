@@ -314,62 +314,46 @@ describe('git-clone', () => {
   });
 
   describe('cloneOrPull — containment barrier', () => {
-    // Closes the test-coverage gap that PR #1325 review (HIGH finding 1)
-    // identified for CodeQL js/path-injection alerts #176/#177/#178. The
-    // barrier these tests guard is the path.relative containment check at
-    // the entry of cloneOrPull, which must reject any targetDir not strictly
-    // inside CLONE_ROOT before any filesystem or subprocess sink.
-    //
-    // These tests do NOT mock spawn — the barrier throws synchronously
-    // before git is invoked, so the rejection is observable directly.
+    // Local-safe mode rejects every remote clone or pull before it can reach
+    // path handling, git, or the network. Keep representative hostile inputs
+    // here so the disabled boundary cannot be relaxed accidentally.
     const cloneRoot = path.resolve(path.join(os.homedir(), '.gitnexus', 'repos'));
+    const disabled = '[local-safe] Remote git clone/pull is disabled';
 
-    it('rejects an absolute target outside CLONE_ROOT', async () => {
+    it('refuses a remote clone with an absolute target outside CLONE_ROOT', async () => {
       await expect(cloneOrPull('https://github.com/a/b.git', '/etc/passwd')).rejects.toThrow(
-        'Clone target must be a subdirectory',
+        disabled,
       );
     });
 
-    it('rejects CLONE_ROOT itself (the rel === "" branch)', async () => {
+    it('refuses a remote clone targeting CLONE_ROOT itself', async () => {
       await expect(cloneOrPull('https://github.com/a/b.git', cloneRoot)).rejects.toThrow(
-        'Clone target must be a subdirectory',
+        disabled,
       );
     });
 
-    it('rejects a parent-directory traversal attempt', async () => {
+    it('refuses a remote clone with a parent-directory traversal target', async () => {
       await expect(
         cloneOrPull('https://github.com/a/b.git', path.join(cloneRoot, '..', 'escape')),
-      ).rejects.toThrow('Clone target must be a subdirectory');
+      ).rejects.toThrow(disabled);
     });
 
-    it('rejects a sibling directory with a common prefix (CLONE_ROOT-evil)', async () => {
-      // Classic startsWith(root + sep) pitfall: '/x/repos' does not catch
-      // '/x/repos-evil/...'. The path.relative idiom does, and the test
-      // documents that property at the cloneOrPull boundary.
+    it('refuses a remote clone with a sibling-prefix target', async () => {
       await expect(cloneOrPull('https://github.com/a/b.git', cloneRoot + '-evil')).rejects.toThrow(
-        'Clone target must be a subdirectory',
+        disabled,
       );
     });
 
-    // Closes the SSRF-bypass vector that Codex's adversarial review on
-    // PR #1325 surfaced: validateGitUrl was only called in the clone
-    // branch. An attacker URL that shared a basename with an existing
-    // clone would skip the SSRF check entirely on the pull path.
-    //
-    // The barrier-pass-but-validateGitUrl-throw case here works because
-    // cloneOrPull validates the URL after the containment check and before
-    // the existence probe, so the rejection fires regardless of whether
-    // the target dir exists on disk.
-    it('rejects URLs that fail validateGitUrl even when the target shape is valid', async () => {
+    it('refuses private and file-scheme remote clone URLs', async () => {
       const fakeTarget = path.join(cloneRoot, 'name-that-does-not-exist');
       await expect(cloneOrPull('http://127.0.0.1/repo.git', fakeTarget)).rejects.toThrow(
-        'private/internal',
+        disabled,
       );
       await expect(cloneOrPull('http://localhost/repo.git', fakeTarget)).rejects.toThrow(
-        'private/internal',
+        disabled,
       );
       await expect(cloneOrPull('file:///etc/passwd', fakeTarget)).rejects.toThrow(
-        'Only https:// and http://',
+        disabled,
       );
     });
   });

@@ -228,14 +228,11 @@ function runGitNexusCli(args, cwd, timeout) {
       windowsHide: true,
     });
   }
-  // npx fallback needs shell on Windows since npx is a .cmd script
-  return spawnSync(isWin ? 'npx.cmd' : 'npx', ['-y', 'gitnexus', ...args], {
-    encoding: 'utf-8',
-    timeout: timeout + 5000,
-    cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+  return {
+    status: 1,
+    stdout: '',
+    stderr: '[local-safe] gitnexus CLI path not found; npx fallback is disabled.\n',
+  };
 }
 
 /**
@@ -345,7 +342,7 @@ function handlePostToolUse(input) {
   // If HEAD matches last indexed commit, no reindex needed
   if (currentHead && currentHead === lastCommit) return;
 
-  const analyzeCmd = `npx gitnexus analyze${hadEmbeddings ? ' --embeddings' : ''}`;
+  const analyzeCmd = 'gitnexus analyze';
   sendHookResponse(
     'PostToolUse',
     `GitNexus index is stale (last indexed: ${lastCommit ? lastCommit.slice(0, 7) : 'never'}). ` +

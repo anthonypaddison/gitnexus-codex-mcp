@@ -20,7 +20,7 @@
  *   gitnexus's own optionalDependencies, and moved native compilation here.
  *
  * What this does:
- *   Runs `npx node-gyp rebuild` inside `node_modules/tree-sitter-proto/`.
+ *   Runs the local `node-gyp rebuild` inside `node_modules/tree-sitter-proto/`.
  *   Build output lands in
  *   `node_modules/tree-sitter-proto/build/Release/tree_sitter_proto_binding.node`
  *   — under npm-managed territory, safe on upgrade.
@@ -31,7 +31,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // Opt-out: skip the native rebuild entirely. Proto parsing becomes
 // unavailable but `npm install gitnexus` finishes much faster on machines
@@ -76,7 +76,18 @@ try {
   }
 
   console.log('[tree-sitter-proto] Building native binding...');
-  execSync('npx node-gyp rebuild', {
+  const nodeGypBin = path.join(
+    __dirname,
+    '..',
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'node-gyp.cmd' : 'node-gyp',
+  );
+  if (!fs.existsSync(nodeGypBin)) {
+    console.warn('[tree-sitter-proto] Skipping build: local node-gyp binary not found.');
+    process.exit(0);
+  }
+  execFileSync(nodeGypBin, ['rebuild'], {
     cwd: protoDir,
     stdio: 'pipe',
     timeout: 180000,

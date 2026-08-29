@@ -1,5 +1,3 @@
-import { logger } from '../logger.js';
-import { CircuitOpenError, ResilientFetchExhaustedError, resilientFetch } from 'gitnexus-shared';
 /**
  * LLM Client for Wiki Generation
  *
@@ -63,20 +61,14 @@ export async function resolveLLMConfig(overrides?: Partial<LLMConfig>): Promise<
   const localProvider =
     savedProvider === 'cursor' || savedProvider === 'claude' || savedProvider === 'codex';
 
-  const apiKey =
-    overrides?.apiKey ||
-    process.env.GITNEXUS_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    savedConfig.apiKey ||
-    '';
+  const apiKey = overrides?.apiKey || savedConfig.apiKey || '';
 
   return {
     apiKey,
     baseUrl:
       overrides?.baseUrl ||
-      process.env.GITNEXUS_LLM_BASE_URL ||
       savedConfig.baseUrl ||
-      'https://openrouter.ai/api/v1',
+      '',
     model:
       overrides?.model ||
       (localProvider ? undefined : process.env.GITNEXUS_MODEL) ||
@@ -96,19 +88,6 @@ export async function resolveLLMConfig(overrides?: Partial<LLMConfig>): Promise<
  */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
-}
-
-function formatTimeoutDuration(timeoutMs: number): string {
-  if (timeoutMs >= 1000 && timeoutMs % 1000 === 0) {
-    return `${timeoutMs / 1000}s`;
-  }
-  return `${timeoutMs}ms`;
-}
-
-function isTimeoutLikeError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (err.name === 'TimeoutError' || err.name === 'AbortError') return true;
-  return /time(d)?\s*out|timeout/i.test(err.message);
 }
 
 /**
@@ -200,202 +179,10 @@ export interface CallLLMOptions {
  * Retries up to 3 times on transient failures (429, 5xx, network errors).
  */
 export async function callLLM(
-  prompt: string,
-  config: LLMConfig,
-  systemPrompt?: string,
-  options?: CallLLMOptions,
+  _prompt: string,
+  _config: LLMConfig,
+  _systemPrompt?: string,
+  _options?: CallLLMOptions,
 ): Promise<LLMResponse> {
-  // Validate base URL before any fetch (CodeQL js/http-to-file-access)
-  validateLLMBaseUrl(config.baseUrl);
-
-  const messages: Array<{ role: string; content: string }> = [];
-  if (systemPrompt) {
-    messages.push({ role: 'system', content: systemPrompt });
-  }
-  messages.push({ role: 'user', content: prompt });
-
-  // Detect Azure endpoint (by provider field or URL pattern)
-  const azure = config.provider === 'azure' || isAzureProvider(config.baseUrl);
-
-  // Warn when using Azure legacy deployment URL without api-version
-  if (azure && !config.apiVersion && config.baseUrl.includes('/deployments/')) {
-    logger.warn(
-      '[gitnexus] Warning: Azure legacy deployment URL detected but no api-version set. Add --api-version 2024-10-21 or use the v1 API format.',
-    );
-  }
-
-  // Detect reasoning model (o1, o3, o4-mini etc.) or explicit override
-  const reasoning = isReasoningModel(config.model, config.isReasoningModel);
-
-  const url = buildRequestUrl(config.baseUrl, azure ? config.apiVersion : undefined);
-  const useStream = !!options?.onChunk;
-
-  // Build request body — reasoning models reject temperature and use max_completion_tokens
-  const body: Record<string, unknown> = {
-    model: config.model,
-    messages,
-  };
-
-  // max_tokens is deprecated; use max_completion_tokens for all models
-  body.max_completion_tokens = config.maxTokens;
-
-  // Only send temperature for non-Azure providers — some Azure models reject non-default values
-  if (!reasoning && !azure && config.temperature !== undefined) {
-    body.temperature = config.temperature;
-  }
-
-  if (useStream) body.stream = true;
-
-  // Build auth headers — Azure uses api-key header, everyone else uses Authorization: Bearer
-  const authHeaders: Record<string, string> = azure
-    ? { 'api-key': config.apiKey }
-    : { Authorization: `Bearer ${config.apiKey}` };
-
-  // Network resilience (bounded retries with exponential-backoff jitter,
-  // 5xx + 429 + Retry-After handling, in-process circuit breaker on the
-  // LLM endpoint) is delegated to resilientFetch. Provider-specific
-  // error parsing (Azure content filter, empty-content checks) stays
-  // here since it requires response-body inspection.
-  let response: Response;
-  try {
-    response = await resilientFetch(
-      url,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders,
-        },
-        body: JSON.stringify(body),
-        // Request timeout is opt-in for wiki generation. Large local
-        // model runs can legitimately take well over a minute, so the
-        // default runtime path must not impose a hidden 60s ceiling.
-        signal:
-          config.requestTimeoutMs !== undefined
-            ? AbortSignal.timeout(config.requestTimeoutMs)
-            : undefined,
-      },
-      {
-        breakerKey: `wiki-llm-${new URL(url).host}`,
-        retry: { maxAttempts: config.maxAttempts ?? 3, baseDelayMs: 2_000, capDelayMs: 30_000 },
-      },
-    );
-  } catch (err) {
-    if (err instanceof CircuitOpenError) {
-      throw new Error(
-        `LLM endpoint circuit open: retry in ${Math.ceil(err.retryAfterMs / 1000)}s. ${err.message}`,
-      );
-    }
-    if (err instanceof ResilientFetchExhaustedError) {
-      const errorText = await err.response.text().catch(() => 'unknown error');
-      throw new Error(
-        `LLM API error (${err.response.status} after retries): ${errorText.slice(0, 500)}`,
-      );
-    }
-    if (config.requestTimeoutMs !== undefined && isTimeoutLikeError(err)) {
-      throw new Error(
-        `LLM request timed out after ${formatTimeoutDuration(config.requestTimeoutMs)}. ` +
-          'Increase --timeout or omit it to disable the request timeout.',
-      );
-    }
-    throw err;
-  }
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'unknown error');
-
-    // Azure content filter — surface a clear message instead of a generic API error.
-    if (
-      azure &&
-      response.status === 400 &&
-      (errorText.includes('content_filter') || errorText.includes('ResponsibleAIPolicyViolation'))
-    ) {
-      throw new Error(
-        `Azure content filter blocked this request. The prompt triggered content policy. Details: ${errorText.slice(0, 300)}`,
-      );
-    }
-
-    // Any other non-OK response here is a terminal 4xx — resilientFetch
-    // already retried 5xx/429 to exhaustion and would have thrown above.
-    throw new Error(`LLM API error (${response.status}): ${errorText.slice(0, 500)}`);
-  }
-
-  // Streaming path
-  if (useStream && response.body) {
-    return await readSSEStream(response.body, options!.onChunk!);
-  }
-
-  // Non-streaming path
-  const json = (await response.json()) as any;
-  const choice = json.choices?.[0];
-  if (!choice?.message?.content) {
-    throw new Error('LLM returned empty response');
-  }
-
-  return {
-    content: choice.message.content,
-    promptTokens: json.usage?.prompt_tokens,
-    completionTokens: json.usage?.completion_tokens,
-  };
-}
-
-/**
- * Read an SSE stream from an OpenAI-compatible streaming response.
- */
-async function readSSEStream(
-  body: ReadableStream<Uint8Array>,
-  onChunk: (charsReceived: number) => void,
-): Promise<LLMResponse> {
-  const decoder = new TextDecoder();
-  const reader = body.getReader();
-  let content = '';
-  let buffer = '';
-  let contentFilterTriggered = false;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('data: ')) continue;
-      const data = trimmed.slice(6);
-      if (data === '[DONE]') continue;
-
-      try {
-        const parsed = JSON.parse(data);
-        const choice = parsed.choices?.[0];
-
-        // Detect content filter finish reason — skip delta from this chunk
-        if (choice?.finish_reason === 'content_filter') {
-          contentFilterTriggered = true;
-          continue;
-        }
-
-        const delta = choice?.delta?.content;
-        if (delta) {
-          content += delta;
-          onChunk(content.length);
-        }
-      } catch {
-        // Skip malformed SSE chunks
-      }
-    }
-  }
-
-  if (contentFilterTriggered) {
-    throw new Error(
-      'content filter triggered mid-stream. The generated content was blocked by content policy. Adjust your prompt and retry.',
-    );
-  }
-
-  if (!content) {
-    throw new Error('LLM returned empty streaming response');
-  }
-
-  return { content };
+  throw new Error('[local-safe] Wiki LLM calls are disabled to prevent outbound network calls.');
 }

@@ -189,7 +189,6 @@ function extractPattern(toolName, toolInput) {
  * Resolve the gitnexus CLI path.
  * 1. Relative path (works when script is inside npm package)
  * 2. require.resolve (works when gitnexus is globally installed)
- * 3. Fall back to npx (returns empty string)
  */
 function resolveCliPath() {
   const fromEnv = process.env.GITNEXUS_HOOK_CLI_PATH;
@@ -212,7 +211,6 @@ function resolveCliPath() {
  * Returns the stderr output (KuzuDB captures stdout at OS level).
  */
 function runGitNexusCli(cliPath, args, cwd, timeout) {
-  const isWin = process.platform === 'win32';
   if (cliPath) {
     return spawnSync(process.execPath, [cliPath, ...args], {
       encoding: 'utf-8',
@@ -222,14 +220,11 @@ function runGitNexusCli(cliPath, args, cwd, timeout) {
       windowsHide: true,
     });
   }
-  // On Windows, invoke npx.cmd directly (no shell needed)
-  return spawnSync(isWin ? 'npx.cmd' : 'npx', ['-y', 'gitnexus', ...args], {
-    encoding: 'utf-8',
-    timeout: timeout + 5000,
-    cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+  return {
+    status: 1,
+    stdout: '',
+    stderr: '[local-safe] gitnexus CLI path not found; npx fallback is disabled.\n',
+  };
 }
 
 /**
@@ -340,7 +335,7 @@ function handlePostToolUse(input) {
   // If HEAD matches last indexed commit, no reindex needed
   if (currentHead && currentHead === lastCommit) return;
 
-  const analyzeCmd = `npx gitnexus analyze${hadEmbeddings ? ' --embeddings' : ''}`;
+  const analyzeCmd = 'gitnexus analyze';
   sendHookResponse(
     'PostToolUse',
     `GitNexus index is stale (last indexed: ${lastCommit ? lastCommit.slice(0, 7) : 'never'}). ` +

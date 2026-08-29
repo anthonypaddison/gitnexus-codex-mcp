@@ -21,7 +21,7 @@
  * users who want a private registry can fork and patch.
  */
 export const UNDERSTAND_QUICKLY_DISPATCH_URL =
-  'https://api.github.com/repos/looptech-ai/understand-quickly/dispatches';
+  'http://127.0.0.1/local-safe-disabled';
 
 /**
  * Event type the registry's sync workflow listens for.

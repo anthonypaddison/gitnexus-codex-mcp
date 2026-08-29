@@ -7,7 +7,7 @@
 
 import path from 'path';
 import readline from 'readline';
-import { execSync, execFileSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import cliProgress from 'cli-progress';
 import { getGitRoot, isGitRepo } from '../storage/git.js';
 import {
@@ -138,6 +138,10 @@ export const wikiCommand = async (inputPath?: string, options?: WikiCommandOptio
 };
 
 const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions): Promise<void> => {
+  console.error('[local-safe] Wiki generation is disabled because it requires LLM network calls.');
+  process.exitCode = 1;
+  return;
+
   // Set verbose mode globally for cursor-client to pick up
   if (options?.verbose) {
     process.env.GITNEXUS_VERBOSE = '1';
@@ -208,7 +212,7 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
     if (options.model) {
       const targetProvider = options.provider ?? existing.provider;
       if (isLocalProvider(targetProvider)) {
-        updates[localModelConfigKey(targetProvider)] = options.model;
+        updates[localModelConfigKey(targetProvider as 'cursor' | 'claude' | 'codex')] = options.model;
       } else {
         updates.model = options.model;
       }
@@ -247,8 +251,7 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
       // Non-interactive mode — need either API key or Cursor CLI
       if (!llmConfig.apiKey && !isLocalProvider(llmConfig.provider)) {
         console.log('  Error: No LLM API key found.');
-        console.log('  Set OPENAI_API_KEY or GITNEXUS_API_KEY environment variable,');
-        console.log('  or pass --api-key <key>, or use --provider cursor|claude|codex.\n');
+        console.log('  Wiki generation is disabled in this local-safe build.\n');
         process.exitCode = 1;
         return;
       }
@@ -318,7 +321,7 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
         const model = modelInput || '';
 
         const localConfig = { ...savedConfig, provider };
-        if (model) (localConfig as Record<string, unknown>)[localModelConfigKey(provider)] = model;
+        if (model) (localConfig as Record<string, unknown>)[localModelConfigKey(selectedLocal.provider)] = model;
         await saveCLIConfig(localConfig);
         console.log('  Config saved to ~/.gitnexus/config.json\n');
 
@@ -346,7 +349,7 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
         }
 
         // API key — use env var if available
-        const envKey = process.env.GITNEXUS_API_KEY || process.env.OPENAI_API_KEY || '';
+        const envKey = '';
         let azureKey: string;
         if (envKey) {
           const masked = envKey.slice(0, 6) + '...' + envKey.slice(-4);
@@ -388,7 +391,7 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
       } else {
         // OpenAI-compatible provider (OpenAI, OpenRouter, Custom)
         if (choice === '2') {
-          baseUrl = 'https://openrouter.ai/api/v1';
+          baseUrl = '';
           defaultModel = 'minimax/minimax-m2.5';
           provider = 'openrouter';
         } else if (choice === '4') {
@@ -401,7 +404,7 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
           defaultModel = 'gpt-4o-mini';
           provider = 'custom';
         } else {
-          baseUrl = 'https://api.openai.com/v1';
+          baseUrl = '';
           defaultModel = 'gpt-4o-mini';
           provider = 'openai';
         }
@@ -411,7 +414,7 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
         const model = modelInput || defaultModel;
 
         // API key — pre-fill hint if env var exists
-        const envKey = process.env.GITNEXUS_API_KEY || process.env.OPENAI_API_KEY || '';
+        const envKey = '';
         if (envKey) {
           const masked = envKey.slice(0, 6) + '...' + envKey.slice(-4);
           const useEnv = await prompt(`  Use existing env key (${masked})? (Y/n): `);
@@ -696,117 +699,8 @@ const wikiCommandImpl = async (inputPath?: string, options?: WikiCommandOptions)
 
 // ─── Gist Publishing ───────────────────────────────────────────────────
 
-function hasGhCLI(): boolean {
-  try {
-    execSync('gh --version', { stdio: 'ignore', windowsHide: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Strict Gist URL predicate. Rejects:
- *   - any URL that does not parse (URL constructor throws)
- *   - schemes other than https (drops `http:`, `file:`, `gist:`-style spoofs)
- *   - hostnames that are not exactly `gist.github.com` (drops substring spoofs
- *     like `https://evil.com/?u=gist.github.com` and userinfo-prefixed shapes
- *     like `https://[email protected]/...` — note that URL.hostname
- *     strips userinfo, so the equality check rejects the userinfo-prefixed
- *     spoof if the actual host differs from gist.github.com)
- *   - any URL containing userinfo (`username[:password]@`), which the URL
- *     parser exposes via `.username` / `.password`. Defense-in-depth: even
- *     when hostname matches, a credential-bearing URL is suspect and not
- *     produced by `gh gist create`.
- *
- * Closes the substring-bypass class CodeQL `js/incomplete-url-substring-
- * sanitization` flags.
- */
-function isGistUrl(line: string): boolean {
-  const trimmed = line.trim();
-  try {
-    const u = new URL(trimmed);
-    return (
-      u.protocol === 'https:' &&
-      u.hostname === 'gist.github.com' &&
-      u.username === '' &&
-      u.password === ''
-    );
-  } catch {
-    return false;
-  }
-}
-
-function publishGist(htmlPath: string): { url: string; rawUrl: string } | null {
-  try {
-    const output = execFileSync(
-      'gh',
-      ['gist', 'create', htmlPath, '--desc', 'Repository Wiki — generated by GitNexus', '--public'],
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
-    ).trim();
-
-    // `gh gist create` prints the gist URL as a line in the output. Find the
-    // first parseable Gist URL — if no line is a valid Gist URL, fail closed
-    // (do NOT fall back to lines[last]: a non-Gist last line would propagate
-    // through the regex below and produce a malformed `rawUrl`).
-    const gistUrl = output.split('\n').find(isGistUrl);
-    if (!gistUrl) return null;
-
-    // Build a raw viewer URL via gist.githack.com.
-    // gist URL format: https://gist.github.com/{user}/{id}
-    const match = gistUrl.match(/gist\.github\.com\/([^/]+)\/([a-f0-9]+)/);
-    let rawUrl = gistUrl;
-    if (match) {
-      rawUrl = `https://gistcdn.githack.com/${match[1]}/${match[2]}/raw/index.html`;
-    }
-
-    return { url: gistUrl.trim(), rawUrl };
-  } catch {
-    return null;
-  }
-}
-
-async function maybePublishGist(htmlPath: string, gistFlag?: boolean): Promise<void> {
-  if (gistFlag === false) return;
-
-  // Check that the HTML file exists
-  try {
-    const fs = await import('fs/promises');
-    await fs.access(htmlPath);
-  } catch {
-    return;
-  }
-
-  if (!hasGhCLI()) {
-    if (gistFlag) {
-      console.log('  GitHub CLI (gh) is not installed. Cannot publish gist.');
-      console.log('  Install it: https://cli.github.com\n');
-    }
-    return;
-  }
-
-  let shouldPublish = !!gistFlag;
-
-  if (!shouldPublish && process.stdin.isTTY) {
-    const answer = await new Promise<string>((resolve) => {
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      rl.question('  Publish wiki as a GitHub Gist for easy viewing? (Y/n): ', (ans) => {
-        rl.close();
-        resolve(ans.trim().toLowerCase());
-      });
-    });
-    shouldPublish = !answer || answer === 'y' || answer === 'yes';
-  }
-
-  if (!shouldPublish) return;
-
-  console.log('\n  Publishing to GitHub Gist...');
-  const result = publishGist(htmlPath);
-
-  if (result) {
-    console.log(`  Gist:   ${result.url}`);
-    console.log(`  Viewer: ${result.rawUrl}\n`);
-  } else {
-    console.log('  Failed to publish gist. Make sure `gh auth login` is configured.\n');
+async function maybePublishGist(_htmlPath: string, gistFlag?: boolean): Promise<void> {
+  if (gistFlag) {
+    console.log('  [local-safe] GitHub Gist publishing is disabled.\n');
   }
 }

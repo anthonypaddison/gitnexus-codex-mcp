@@ -113,6 +113,12 @@ program
   .action(createLazyAction(() => import('./mcp.js'), 'mcpCommand'));
 
 program
+  .command('mcp-safe')
+  .description('Start a fixed-repository, read-only MCP server from its local .gitnexus index')
+  .requiredOption('--repo <path>', 'Absolute path to the single indexed git repository')
+  .action(createLazyAction(() => import('./mcp.js'), 'mcpSafeCommand'));
+
+program
   .command('list')
   .description('List all indexed repositories')
   .action(createLazyAction(() => import('./list.js'), 'listCommand'));
@@ -187,10 +193,7 @@ program
 program
   .command('publish [path]')
   .description(
-    'Notify the understand-quickly registry that this repo has a fresh GitNexus index. ' +
-      'Opt-in: requires UNDERSTAND_QUICKLY_TOKEN (fine-grained PAT with ' +
-      '`Repository dispatches: write` on looptech-ai/understand-quickly). ' +
-      'No-op without the token. See https://github.com/looptech-ai/understand-quickly.',
+    'Disabled in this local-safe build to prevent outbound network calls.',
   )
   .option('--id <owner/repo>', 'Override the registry id (defaults to the origin remote)')
   .option('--skip-git', 'Treat cwd as the repo root and skip parent git-root discovery')

@@ -7,8 +7,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "gitnexus:refresh": "gitnexus analyze --embeddings --skills",
-    "gitnexus:full": "gitnexus analyze --force --embeddings --skills"
+    "gitnexus:refresh": "gitnexus analyze --skills",
+    "gitnexus:full": "gitnexus analyze --force --skills"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.57.2",

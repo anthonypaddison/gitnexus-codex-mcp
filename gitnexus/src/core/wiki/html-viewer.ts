@@ -84,9 +84,8 @@ function buildHTML(
   parts.push('<meta charset="UTF-8">');
   parts.push('<meta name="viewport" content="width=device-width, initial-scale=1.0">');
   parts.push('<title>' + esc(projectName) + ' — Wiki</title>');
-  parts.push('<script src="https://cdn.jsdelivr.net/npm/marked@11.0.0/marked.min.js"><\/script>');
   parts.push(
-    '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>',
+    '<script>window.marked=null;window.mermaid=null;window.GITNEXUS_LOCAL_SAFE=true;<\/script>',
   );
   parts.push('<style>');
   parts.push(CSS);
@@ -218,7 +217,6 @@ const JS_APP = `
   var activePage = 'overview';
 
   document.addEventListener('DOMContentLoaded', function() {
-    mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
     renderMeta();
     renderNav();
     document.getElementById('menu-toggle').addEventListener('click', function() {
@@ -303,34 +301,7 @@ const JS_APP = `
       return;
     }
 
-    contentEl.innerHTML = marked.parse(md);
-
-    // Rewrite .md links to hash navigation
-    var links = contentEl.querySelectorAll('a[href]');
-    for (var i = 0; i < links.length; i++) {
-      var href = links[i].getAttribute('href');
-      if (href && href.endsWith('.md') && href.indexOf('://') === -1) {
-        var slug = href.replace(/\\.md$/, '');
-        links[i].setAttribute('href', '#' + encodeURIComponent(slug));
-        (function(s) {
-          links[i].addEventListener('click', function(e) {
-            e.preventDefault();
-            navigateTo(s);
-          });
-        })(slug);
-      }
-    }
-
-    // Convert mermaid code blocks into mermaid divs
-    var mermaidBlocks = contentEl.querySelectorAll('pre code.language-mermaid');
-    for (var i = 0; i < mermaidBlocks.length; i++) {
-      var pre = mermaidBlocks[i].parentElement;
-      var div = document.createElement('div');
-      div.className = 'mermaid';
-      div.textContent = mermaidBlocks[i].textContent;
-      pre.parentNode.replaceChild(div, pre);
-    }
-    try { mermaid.run({ querySelector: '.mermaid' }); } catch(e) {}
+    contentEl.innerHTML = '<pre class="markdown-source">' + escH(md) + '</pre>';
 
     window.scrollTo(0, 0);
     document.getElementById('sidebar').classList.remove('open');

@@ -108,7 +108,8 @@ describe('antigravity hook adapter e2e', () => {
       expect(output).not.toBeNull();
       expect(output!.hookEventName).toBe('AfterTool');
       expect(output!.additionalContext).toContain('index is stale');
-      expect(output!.additionalContext).toContain('npx gitnexus analyze');
+      expect(output!.additionalContext).toContain('gitnexus analyze');
+      expect(output!.additionalContext).not.toContain('npx');
 
       // Mirror to stderr so terminal users see the hint even when the agent
       // discards additionalContext
@@ -138,7 +139,7 @@ describe('antigravity hook adapter e2e', () => {
       expect(result.stderr).not.toContain('[GitNexus] index is stale');
     });
 
-    it('includes --embeddings flag when the previous index had embeddings', () => {
+    it('omits disabled embeddings even when legacy metadata reports embeddings', () => {
       fs.writeFileSync(
         path.join(gitNexusDir, 'meta.json'),
         JSON.stringify({
@@ -157,7 +158,7 @@ describe('antigravity hook adapter e2e', () => {
 
       const output = parseHookOutput(result.stdout);
       expect(output).not.toBeNull();
-      expect(output!.additionalContext).toContain('--embeddings');
+      expect(output!.additionalContext).not.toContain('--embeddings');
     });
 
     it('treats missing meta.json as stale', () => {

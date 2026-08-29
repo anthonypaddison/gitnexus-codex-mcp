@@ -380,6 +380,8 @@ export async function cloneOrPull(
   targetDir: string,
   onProgress?: (progress: CloneProgress) => void,
 ): Promise<string> {
+  throw new Error('[local-safe] Remote git clone/pull is disabled to prevent outbound network calls.');
+
   // Containment barrier — inline with the canonical path.relative idiom so
   // CodeQL recognizes the sanitizer at every following filesystem and
   // subprocess sink. The same `safeTarget` is used for every downstream

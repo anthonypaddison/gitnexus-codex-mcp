@@ -17,8 +17,8 @@ const execFileMock = vi.fn((...args: any[]) => {
   }
 });
 
-// By default, execFileSync throws (simulating `which gitnexus` not found)
-// so getMcpEntry() falls back to the npx path.
+// By default, execFileSync throws (simulating `which gitnexus` not found),
+// so getMcpEntry() records the local command name without a package-manager fallback.
 const execFileSyncMock = vi.fn(() => {
   throw new Error('not found');
 });
@@ -71,7 +71,7 @@ describe('setupClaudeCode', () => {
     await fs.rm(tempHome, { recursive: true, force: true });
   });
 
-  it('writes win32 MCP entry with cmd wrapper', async () => {
+  it('writes win32 MCP entry without an npx fallback', async () => {
     setPlatform('win32');
 
     const { setupCommand } = await import('../../src/cli/setup.js');
@@ -81,12 +81,12 @@ describe('setupClaudeCode', () => {
     const config = JSON.parse(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'cmd',
-      args: ['/c', 'npx', '-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 
-  it('writes non-win32 MCP entry with npx directly', async () => {
+  it('writes non-win32 MCP entry without an npx fallback', async () => {
     setPlatform('darwin');
 
     const { setupCommand } = await import('../../src/cli/setup.js');
@@ -96,8 +96,8 @@ describe('setupClaudeCode', () => {
     const config = JSON.parse(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'npx',
-      args: ['-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 
@@ -175,7 +175,7 @@ describe('setupClaudeCode', () => {
     });
   });
 
-  it('falls back to npx when gitnexus is not on PATH', async () => {
+  it('uses the local command name when gitnexus is not on PATH', async () => {
     setPlatform('darwin');
     execFileSyncMock.mockImplementationOnce(() => {
       throw new Error('not found');
@@ -188,8 +188,8 @@ describe('setupClaudeCode', () => {
     const config = JSON.parse(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'npx',
-      args: ['-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 
@@ -282,7 +282,7 @@ describe('setupClaudeCode', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('falls back to npx on Windows when no .cmd/.bat wrapper is found', async () => {
+  it('uses the local command name on Windows when no .cmd/.bat wrapper is found', async () => {
     setPlatform('win32');
     // Edge case: where returns only a non-spawnable shim (no .cmd wrapper)
     execFileSyncMock.mockReturnValueOnce('C:\\Users\\dev\\AppData\\Roaming\\npm\\gitnexus\n');
@@ -294,12 +294,12 @@ describe('setupClaudeCode', () => {
     const config = JSON.parse(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'cmd',
-      args: ['/c', 'npx', '-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 
-  it('falls back to npx on Windows when where returns only a .ps1 path', async () => {
+  it('uses the local command name on Windows when where returns only a .ps1 path', async () => {
     setPlatform('win32');
     execFileSyncMock.mockReturnValueOnce('C:\\Users\\dev\\AppData\\Roaming\\npm\\gitnexus.ps1\n');
 
@@ -310,8 +310,8 @@ describe('setupClaudeCode', () => {
     const config = JSON.parse(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'cmd',
-      args: ['/c', 'npx', '-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 });

@@ -29,8 +29,8 @@
       "helperText": "Get your API key from",
       "helperLinkLabel": "OpenAI Platform",
       "modelPlaceholder": "e.g., gpt-4o, gpt-4-turbo, gpt-3.5-turbo",
-      "baseUrlPlaceholder": "https://api.openai.com/v1 (default)",
-      "baseUrlHint": "Leave empty to use the default OpenAI API. Set a custom URL for proxies or compatible APIs."
+      "baseUrlPlaceholder": "local-safe: external API disabled",
+      "baseUrlHint": "External LLM API calls are disabled in this local-safe build."
     },
     "gemini": {
       "description": "Use Google Gemini models.",
@@ -88,6 +88,6 @@
   "browseModels": "Browse all models at",
   "openRouterModels": "OpenRouter Models",
   "zaiPlatform": "Z.AI Platform",
-  "glmCodingApi": "Coding API (default). Use https://api.z.ai/api/paas/v4 for the general API.",
+  "glmCodingApi": "External GLM API calls are disabled in this local-safe build.",
   "privacyFull": "Your API keys are stored only in your browser's session storage and are cleared when the tab closes. They're sent directly to the LLM provider when you chat. Your code never leaves your machine."
 }

@@ -106,6 +106,8 @@ export interface SSEHandlers<T = unknown> {
  * Automatically reconnects on network drops (up to 3 retries with backoff).
  */
 export function streamSSE<T = unknown>(url: string, handlers: SSEHandlers<T>): AbortController {
+  validateBackendUrl(url);
+
   const controller = new AbortController();
   const MAX_RETRIES = 3;
   const BASE_DELAY_MS = 1_000;
@@ -210,8 +212,7 @@ let _backendUrl = 'http://localhost:4747';
  * storing it as the fetch target base (CodeQL js/client-side-request-forgery).
  *
  * Throws if the URL uses a non-HTTP scheme (e.g. javascript:, data:, file://).
- * All other well-formed http/https URLs are accepted — the client intentionally
- * supports connecting to remote GitNexus servers, not just localhost.
+ * Local-safe build: only loopback backend URLs are accepted.
  */
 export function validateBackendUrl(url: string): void {
   let parsed: URL;
@@ -224,6 +225,10 @@ export function validateBackendUrl(url: string): void {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     // Use parsed.protocol only (scheme), not the full URL, to avoid leaking credentials.
     throw new Error(`Backend URL must use http:// or https:// (got ${parsed.protocol})`);
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host !== 'localhost' && host !== '127.0.0.1' && host !== '::1') {
+    throw new Error('Local-safe build only allows loopback backend URLs.');
   }
 }
 
@@ -244,10 +249,10 @@ export function normalizeServerUrl(input: string): string {
   let url = input.trim().replace(/\/+$/, '');
 
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    if (url.startsWith('localhost') || url.startsWith('127.0.0.1')) {
+    if (url.startsWith('localhost') || url.startsWith('127.0.0.1') || url.startsWith('[::1]')) {
       url = `http://${url}`;
     } else {
-      url = `https://${url}`;
+      throw new Error('Local-safe build only allows loopback backend URLs.');
     }
   }
 
@@ -281,6 +286,8 @@ const fetchWithTimeout = async (
    */
   forceRetry = false,
 ): Promise<Response> => {
+  validateBackendUrl(url);
+
   // Merge the external caller signal (if any) with an
   // `AbortSignal.timeout()` so a timer-fired abort produces a
   // `DOMException` with `name === 'TimeoutError'` — which

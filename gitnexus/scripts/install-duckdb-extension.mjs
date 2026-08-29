@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const EXTENSION_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+const ALLOWED_EXTENSIONS = new Set(['fts']);
 
 function parseLbugMaxDbSize(raw) {
   const parsed = raw ? Number(raw) : NaN;
@@ -17,6 +18,9 @@ function parseLbugMaxDbSize(raw) {
 async function installDuckDbExtension(extensionName) {
   if (!extensionName || !EXTENSION_NAME_PATTERN.test(extensionName)) {
     throw new Error(`Invalid DuckDB extension name: ${extensionName ?? '<missing>'}`);
+  }
+  if (!ALLOWED_EXTENSIONS.has(extensionName.toLowerCase())) {
+    throw new Error(`[local-safe] DuckDB extension install is only allowed for: fts`);
   }
 
   const require = createRequire(import.meta.url);

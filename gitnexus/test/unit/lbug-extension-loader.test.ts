@@ -48,6 +48,23 @@ describe('ExtensionManager — LOAD-first behavior', () => {
 });
 
 describe('ExtensionManager — install policies', () => {
+  it('defaults to load-only and never installs when no explicit policy is supplied', async () => {
+    const previous = process.env.GITNEXUS_LBUG_EXTENSION_INSTALL;
+    delete process.env.GITNEXUS_LBUG_EXTENSION_INSTALL;
+    const installExtension = vi.fn().mockResolvedValue(okInstall);
+    const manager = new ExtensionManager({ installExtension, warn: noopWarn });
+    const query = vi.fn().mockRejectedValue(new Error('Extension "fts" not found'));
+
+    try {
+      await expect(manager.ensure(query, 'fts', 'FTS')).resolves.toBe(false);
+      expect(query).toHaveBeenCalledWith('LOAD EXTENSION fts');
+      expect(installExtension).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.GITNEXUS_LBUG_EXTENSION_INSTALL;
+      else process.env.GITNEXUS_LBUG_EXTENSION_INSTALL = previous;
+    }
+  });
+
   it('runs bounded out-of-process INSTALL and retries LOAD when policy=auto', async () => {
     const installExtension = vi.fn().mockResolvedValue(okInstall);
     const manager = new ExtensionManager({ policy: 'auto', installExtension });

@@ -176,7 +176,7 @@ describe('publishCommand (no-token no-op)', () => {
   });
 });
 
-describe('publishCommand response branches (MEDIUM 5)', () => {
+describe('publishCommand local-safe boundary', () => {
   let tempDir: string;
   let originalToken: string | undefined;
   let exitCodeBefore: number | undefined;
@@ -209,108 +209,18 @@ describe('publishCommand response branches (MEDIUM 5)', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  function mockResponse(status: number, body = '') {
-    fetchSpy.mockResolvedValueOnce({
-      status,
-      ok: status >= 200 && status < 300,
-      text: async () => body,
-      body: { cancel: async () => {} },
-      headers: new Headers(),
-    } as unknown as Response);
-  }
-
-  it('204 → exit 0 with success message', async () => {
-    mockResponse(204);
+  it('does not publish or expose a configured token', async () => {
+    process.env[UNDERSTAND_QUICKLY_TOKEN_ENV] = 'not-a-secret';
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const { publishCommand } = await import('../../src/cli/publish.js');
     await publishCommand(tempDir, {
       id: 'looptech-ai/understand-quickly',
       skipGit: true,
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const written = errSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(written).not.toContain('not-a-secret');
     expect(process.exitCode ?? 0).toBe(0);
-  });
-
-  it('401 → exit 1 with PAT-invalid hint', async () => {
-    mockResponse(401, '{"message":"Bad credentials"}');
-    const { publishCommand } = await import('../../src/cli/publish.js');
-    await publishCommand(tempDir, {
-      id: 'looptech-ai/understand-quickly',
-      skipGit: true,
-    });
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('403 → exit 1 with scope-missing hint', async () => {
-    mockResponse(403, '{"message":"Resource not accessible"}');
-    const { publishCommand } = await import('../../src/cli/publish.js');
-    await publishCommand(tempDir, {
-      id: 'looptech-ai/understand-quickly',
-      skipGit: true,
-    });
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('404 → exit 1 with repo-access hint', async () => {
-    mockResponse(404, '{"message":"Not Found"}');
-    const { publishCommand } = await import('../../src/cli/publish.js');
-    await publishCommand(tempDir, {
-      id: 'looptech-ai/understand-quickly',
-      skipGit: true,
-    });
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('5xx → exit 1 with raw body', async () => {
-    mockResponse(503, 'gateway timeout');
-    const { publishCommand } = await import('../../src/cli/publish.js');
-    await publishCommand(tempDir, {
-      id: 'looptech-ai/understand-quickly',
-      skipGit: true,
-    });
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('network throw → exit 1', async () => {
-    fetchSpy.mockRejectedValueOnce(new Error('ECONNRESET'));
-    const { publishCommand } = await import('../../src/cli/publish.js');
-    await publishCommand(tempDir, {
-      id: 'looptech-ai/understand-quickly',
-      skipGit: true,
-    });
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('TimeoutError (HIGH 4 — fetch timeout) → exit 1 with timed-out message', async () => {
-    // `AbortSignal.timeout()` throws a real `DOMException` with
-    // `name === 'TimeoutError'`. Faking it as `Error{name:'AbortError'}`
-    // (the previous shape of this test) hid a mismatch in publish.ts —
-    // the catch branch only matched 'AbortError' and the user-facing
-    // "timed out" message never fired in production.
-    const abort = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
-    fetchSpy.mockRejectedValueOnce(abort);
-    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const { publishCommand } = await import('../../src/cli/publish.js');
-    await publishCommand(tempDir, {
-      id: 'looptech-ai/understand-quickly',
-      skipGit: true,
-    });
-    expect(process.exitCode).toBe(1);
-    const written = errSpy.mock.calls.map((c) => String(c[0])).join('');
-    expect(written).toMatch(/timed out/i);
-    errSpy.mockRestore();
-  });
-
-  it('token never appears in any logged output', async () => {
-    process.env[UNDERSTAND_QUICKLY_TOKEN_ENV] = 'pat_secret_value';
-    mockResponse(401, '');
-    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const { publishCommand } = await import('../../src/cli/publish.js');
-    await publishCommand(tempDir, {
-      id: 'looptech-ai/understand-quickly',
-      skipGit: true,
-    });
-    const written = errSpy.mock.calls.map((c) => String(c[0])).join('');
-    expect(written).not.toContain('pat_secret_value');
     errSpy.mockRestore();
   });
 });

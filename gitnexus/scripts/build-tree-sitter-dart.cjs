@@ -5,7 +5,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // Opt-out: skip the native rebuild entirely. Dart parsing becomes
 // unavailable but `npm install gitnexus` finishes much faster on machines
@@ -42,7 +42,18 @@ try {
   }
 
   console.log('[tree-sitter-dart] Building native binding...');
-  execSync('npx node-gyp rebuild', {
+  const nodeGypBin = path.join(
+    __dirname,
+    '..',
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'node-gyp.cmd' : 'node-gyp',
+  );
+  if (!fs.existsSync(nodeGypBin)) {
+    console.warn('[tree-sitter-dart] Skipping build: local node-gyp binary not found.');
+    process.exit(0);
+  }
+  execFileSync(nodeGypBin, ['rebuild'], {
     cwd: dartDir,
     stdio: 'pipe',
     timeout: 180000,

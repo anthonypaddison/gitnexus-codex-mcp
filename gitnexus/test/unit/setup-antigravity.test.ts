@@ -108,12 +108,12 @@ describe('setupAntigravity', () => {
     const config = JSON.parse(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'npx',
-      args: ['-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 
-  it('writes win32 MCP entry with cmd wrapper', async () => {
+  it('writes win32 MCP entry without an npx fallback', async () => {
     setPlatform('win32');
 
     const { setupCommand } = await import('../../src/cli/setup.js');
@@ -126,8 +126,8 @@ describe('setupAntigravity', () => {
     const config = JSON.parse(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'cmd',
-      args: ['/c', 'npx', '-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 

@@ -28,8 +28,7 @@ process.on('unhandledRejection', (reason) => {
 export const serveCommand = async (options?: { port?: string; host?: string }) => {
   const port = Number(options?.port ?? 4747);
   // Default to 'localhost' so the OS decides whether to bind to 127.0.0.1 or
-  // ::1 based on system configuration, avoiding spurious CORS errors when the
-  // hosted frontend at gitnexus.vercel.app connects to localhost.
+  // ::1. The local-safe server is intended for a locally built Web UI only.
   const host = options?.host ?? 'localhost';
 
   try {

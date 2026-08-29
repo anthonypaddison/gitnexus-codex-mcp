@@ -48,13 +48,13 @@ const SOURCES: Record<string, GrammarSource> = {
     load: () => _require('tree-sitter-javascript'),
     unavailableNote:
       'JavaScript parsing requires `tree-sitter-javascript`. ' +
-      'Check that the package and its native binding installed cleanly (`npm ci`).',
+      'Check that the package and its native binding are present in this local checkout.',
   },
   [SupportedLanguages.TypeScript]: {
     load: () => _require('tree-sitter-typescript').typescript,
     unavailableNote:
       'TypeScript parsing requires `tree-sitter-typescript`. ' +
-      'Check that the package and its native binding installed cleanly (`npm ci`).',
+      'Check that the package and its native binding are present in this local checkout.',
   },
   [`${SupportedLanguages.TypeScript}:tsx`]: {
     load: () => _require('tree-sitter-typescript').tsx,

@@ -20,8 +20,6 @@ import {
   DeepSeekConfig,
   ProviderConfig,
 } from './types';
-import { DEFAULT_OPENROUTER_BASE_URL, DEFAULT_OLLAMA_BASE_URL } from '../../config/ui-constants';
-import { resilientFetch } from 'gitnexus-shared';
 
 const STORAGE_KEY = 'gitnexus-llm-settings';
 
@@ -279,71 +277,8 @@ export const setActiveProvider = (provider: LLMProvider): LLMSettings => {
   return updated;
 };
 
-/**
- * Get the current provider configuration
- */
-type ProviderBuilder = (settings: LLMSettings) => ProviderConfig | null;
-
-const providerBuilders: Record<LLMProvider, ProviderBuilder> = {
-  openai: (settings) => {
-    if (!settings.openai?.apiKey) return null;
-    return { provider: 'openai', ...settings.openai } as OpenAIConfig;
-  },
-  'azure-openai': (settings) => {
-    if (!settings.azureOpenAI?.apiKey || !settings.azureOpenAI?.endpoint) return null;
-    return { provider: 'azure-openai', ...settings.azureOpenAI } as AzureOpenAIConfig;
-  },
-  gemini: (settings) => {
-    if (!settings.gemini?.apiKey) return null;
-    return { provider: 'gemini', ...settings.gemini } as GeminiConfig;
-  },
-  anthropic: (settings) => {
-    if (!settings.anthropic?.apiKey) return null;
-    return { provider: 'anthropic', ...settings.anthropic } as AnthropicConfig;
-  },
-  ollama: (settings) => {
-    return {
-      provider: 'ollama',
-      ...settings.ollama,
-      baseUrl: settings.ollama?.baseUrl ?? DEFAULT_OLLAMA_BASE_URL,
-    } as OllamaConfig;
-  },
-  openrouter: (settings) => {
-    if (!settings.openrouter?.apiKey || settings.openrouter.apiKey.trim() === '') return null;
-    return {
-      provider: 'openrouter',
-      apiKey: settings.openrouter.apiKey,
-      model: settings.openrouter.model || '',
-      baseUrl: settings.openrouter.baseUrl || DEFAULT_OPENROUTER_BASE_URL,
-      temperature: settings.openrouter.temperature,
-      maxTokens: settings.openrouter.maxTokens,
-    } as OpenRouterConfig;
-  },
-  minimax: (settings) => {
-    if (!settings.minimax?.apiKey) return null;
-    return { provider: 'minimax', ...settings.minimax } as MiniMaxConfig;
-  },
-  glm: (settings) => {
-    if (!settings.glm?.apiKey) return null;
-    return {
-      provider: 'glm',
-      apiKey: settings.glm.apiKey,
-      model: settings.glm.model || 'GLM-5',
-      baseUrl: settings.glm.baseUrl || 'https://api.z.ai/api/coding/paas/v4',
-      temperature: settings.glm.temperature,
-      maxTokens: settings.glm.maxTokens,
-    } as GLMConfig;
-  },
-  deepseek: (settings) => {
-    if (!settings.deepseek?.apiKey) return null;
-    return { provider: 'deepseek', ...settings.deepseek } as DeepSeekConfig;
-  },
-};
-
 export const getActiveProviderConfig = (): ProviderConfig | null => {
-  const settings = loadSettings();
-  const builder = providerBuilders[settings.activeProvider];
-  return builder ? builder(settings) : null;
+  return null;
 };
 
 /**
@@ -451,19 +386,5 @@ export const getAvailableModels = (provider: LLMProvider): string[] => {
  * Fetch available models from OpenRouter API
  */
 export const fetchOpenRouterModels = async (): Promise<Array<{ id: string; name: string }>> => {
-  try {
-    const response = await resilientFetch(`${DEFAULT_OPENROUTER_BASE_URL}/models`, undefined, {
-      breakerKey: 'openrouter-models',
-      retry: { maxAttempts: 2, baseDelayMs: 500, capDelayMs: 2_000 },
-    });
-    if (!response.ok) throw new Error('Failed to fetch models');
-    const data = await response.json();
-    return data.data.map((model: any) => ({
-      id: model.id,
-      name: model.name || model.id,
-    }));
-  } catch (error) {
-    console.error('Error fetching OpenRouter models:', error);
-    return [];
-  }
+  return [];
 };

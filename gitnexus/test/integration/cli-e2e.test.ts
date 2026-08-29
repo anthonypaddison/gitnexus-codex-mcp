@@ -1139,20 +1139,20 @@ describe('CLI end-to-end', () => {
       expect(result.stdout).toContain('--concurrency <n>');
     });
 
-    it('wiki on non-git directory fails with exit code 1', () => {
+    it('wiki is disabled before inspecting a non-git directory', () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-nogit-'));
       try {
         const result = runCliRaw(['wiki', tmpDir], repoRoot);
         if (result.status === null) return;
 
         expect(result.status).toBe(1);
-        expect(result.stdout).toMatch(/not.*git repository/i);
+        expect(result.stderr).toMatch(/Wiki generation is disabled/i);
       } finally {
         cleanupTempDirSync(tmpDir);
       }
     });
 
-    it('wiki on non-indexed repo fails with "No GitNexus index"', () => {
+    it('wiki is disabled before inspecting a non-indexed repository', () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-noindex-'));
       try {
         spawnSync('git', ['init'], { cwd: tmpDir, stdio: 'pipe' });
@@ -1183,7 +1183,7 @@ describe('CLI end-to-end', () => {
         if (result.status === null) return;
 
         expect(result.status).toBe(1);
-        expect(result.stdout).toMatch(/No GitNexus index found/);
+        expect(result.stderr).toMatch(/Wiki generation is disabled/i);
       } finally {
         cleanupTempDirSync(tmpDir);
       }

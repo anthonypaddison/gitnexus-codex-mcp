@@ -466,7 +466,7 @@ async function ensureHeap(): Promise<boolean> {
         `  Analysis aborted in a native worker or native binding path.\n` +
           `  Try one of these recovery paths:\n` +
           `    gitnexus analyze --workers 0\n` +
-          `    npm uninstall -g gitnexus && npm install -g gitnexus@latest\n` +
+          `    rebuild this local-safe checkout from already-approved local dependencies\n` +
           `    Use Node 22 LTS if you are on a newer non-LTS runtime.\n`,
         { recoveryHint: 'native-worker-abort' },
       );
@@ -1179,15 +1179,8 @@ const analyzeCommandImpl = async (inputPath?: string, options?: AnalyzeOptions):
     // rather than a stack-trace dump followed by a second remediation block.
     if (isHfDownloadFailure(msg) || msg.includes('Failed to download embedding model')) {
       cliError(
-        `  The embedding model could not be downloaded.\n` +
-          `  huggingface.co may be unreachable from your network\n` +
-          `  (e.g. behind a corporate proxy or a regional firewall).\n` +
-          `  Suggestions:\n` +
-          `    1. Set HF_ENDPOINT to a mirror and retry:\n` +
-          `         HF_ENDPOINT=https://hf-mirror.com npx gitnexus analyze --embeddings\n` +
-          `         (Windows: set HF_ENDPOINT=https://hf-mirror.com && npx gitnexus analyze --embeddings)\n` +
-          `    2. Check your proxy / VPN settings.\n` +
-          `    3. Once downloaded the model is cached — future runs work offline.\n`,
+        `  Embeddings are disabled in this local-safe build because model downloads can contact external hosts.\n` +
+          `  Re-run without --embeddings.\n`,
         { recoveryHint: 'hf-endpoint-unreachable' },
       );
       process.exitCode = 1;
@@ -1229,10 +1222,8 @@ const analyzeCommandImpl = async (inputPath?: string, options?: AnalyzeOptions):
       cliError(
         `  This looks like an npm dependency resolution issue.\n` +
           `  Suggestions:\n` +
-          `    1. Clear the npm cache:    npm cache clean --force\n` +
-          `    2. Update npm:             npm install -g npm@latest\n` +
-          `    3. Reinstall gitnexus:     npm install -g gitnexus@latest\n` +
-          `    4. Or try npx directly:    npx gitnexus@latest analyze\n`,
+          `    1. Use only already-approved local dependencies.\n` +
+          `    2. Rebuild this local-safe checkout without package-manager registry access.\n`,
         { recoveryHint: 'npm-resolution' },
       );
     } else if (
@@ -1243,8 +1234,7 @@ const analyzeCommandImpl = async (inputPath?: string, options?: AnalyzeOptions):
       cliError(
         `  A required module could not be loaded. The installation may be corrupt.\n` +
           `  Suggestions:\n` +
-          `    1. Reinstall:   npm install -g gitnexus@latest\n` +
-          `    2. Clear cache: npm cache clean --force && npx gitnexus@latest analyze\n`,
+          `    1. Rebuild this local-safe checkout from already-approved local dependencies.\n`,
         { recoveryHint: 'module-not-found' },
       );
     }

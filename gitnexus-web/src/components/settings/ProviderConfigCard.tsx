@@ -73,14 +73,9 @@ export const ProviderConfigCard = ({
             <p className="text-xs text-text-muted">
               {apiKey.helperText}{' '}
               {apiKey.helperLink ? (
-                <a
-                  href={apiKey.helperLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:underline"
-                >
+                <span className="text-accent">
                   {apiKey.helperLinkLabel ?? t('learnMore')}
-                </a>
+                </span>
               ) : null}
             </p>
           )}

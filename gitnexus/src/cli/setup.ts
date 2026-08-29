@@ -10,7 +10,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { execFile, execFileSync } from 'child_process';
-import { createRequire } from 'module';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { parseTree, modify, applyEdits, ParseError, parse as parseJsonc } from 'jsonc-parser';
@@ -20,20 +19,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const execFileAsync = promisify(execFile);
 
-// Pin the npx fallback to the installed version. Reason: setup.ts writes
-// a config that persists in the user's editor and is invoked on every MCP
-// connect. Pinning to the installed version means subsequent invocations
-// skip the npm-registry metadata roundtrip (and stay reproducible until
-// the user upgrades). Static configs and READMEs intentionally use
-// `gitnexus@latest` since they're quickstart docs, not persisted state.
-const _require = createRequire(import.meta.url);
-const _pkg = _require('../../package.json') as { version?: unknown };
-if (typeof _pkg.version !== 'string' || !_pkg.version) {
-  throw new Error(
-    'gitnexus/package.json#version is missing or not a string — cannot generate MCP fallback config.',
-  );
-}
-const NPX_REF = `gitnexus@${_pkg.version}`;
+// Local-safe build: never persist an npx fallback. Persisted MCP entries are
+// invoked by editors outside this installer, so any fallback must be local.
+const LOCAL_SAFE_BIN = 'gitnexus';
 
 interface SetupResult {
   configured: string[];
@@ -79,14 +67,9 @@ function resolveGitnexusBin(): string | null {
 /**
  * The MCP server entry for all editors.
  *
- * Prefers the globally-installed `gitnexus` binary (starts in ~1 s) over
- * `npx -y gitnexus@<version>` (cold-cache install of native deps can take
- * >60 s, exceeding Claude Code's 30 s MCP connection timeout). The fallback
- * version is read from gitnexus/package.json#version at module load so the
- * persisted user config matches the installed package.
- *
- * Falls back to npx when the binary isn't on PATH — e.g. first-time
- * users who ran `npx gitnexus analyze` but haven't done `npm i -g`.
+ * Prefers the globally-installed `gitnexus` binary. In this local-safe build,
+ * the fallback is also the plain `gitnexus` command so persisted editor configs
+ * never invoke package-manager network resolution.
  */
 function getMcpEntry() {
   const bin = resolveGitnexusBin();
@@ -95,17 +78,7 @@ function getMcpEntry() {
     return { command: bin, args: ['mcp'] };
   }
 
-  // Fallback: npx (works without a global install, but slow cold-start)
-  if (process.platform === 'win32') {
-    return {
-      command: 'cmd',
-      args: ['/c', 'npx', '-y', NPX_REF, 'mcp'],
-    };
-  }
-  return {
-    command: 'npx',
-    args: ['-y', NPX_REF, 'mcp'],
-  };
+  return { command: LOCAL_SAFE_BIN, args: ['mcp'] };
 }
 
 /**
@@ -119,10 +92,7 @@ function getOpenCodeMcpEntry() {
     return { type: 'local', command: [bin, 'mcp'] };
   }
 
-  if (process.platform === 'win32') {
-    return { type: 'local', command: ['cmd', '/c', 'npx', '-y', NPX_REF, 'mcp'] };
-  }
-  return { type: 'local', command: ['npx', '-y', NPX_REF, 'mcp'] };
+  return { type: 'local', command: [LOCAL_SAFE_BIN, 'mcp'] };
 }
 
 /**

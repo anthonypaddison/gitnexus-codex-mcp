@@ -560,3 +560,56 @@ WHEN TO USE: After changing group.yaml or re-indexing member repos.`,
     },
   },
 ];
+
+/**
+ * Read-only tool set exposed by the local-safe MCP entry point. The selected
+ * process has exactly one repository root, so every repository/group/worktree
+ * selector is removed from the protocol schema rather than merely ignored.
+ */
+const HARDENED_TOOL_NAMES = [
+  'query',
+  'context',
+  'detect_changes',
+  'impact',
+  'route_map',
+  'tool_map',
+  'shape_check',
+  'api_impact',
+] as const;
+
+const HARDENED_DESCRIPTIONS: Record<(typeof HARDENED_TOOL_NAMES)[number], string> = {
+  query: 'Search the configured repository knowledge graph for relevant execution flows and symbols.',
+  context: 'Show references and process participation for a symbol in the configured repository.',
+  detect_changes: 'Analyze changes in the configured repository against its local index.',
+  impact: 'Analyze the blast radius of a symbol change within the configured repository.',
+  route_map: 'Show API route mappings within the configured repository.',
+  tool_map: 'Show CLI tool mappings within the configured repository.',
+  shape_check: 'Check compatibility between selected symbols in the configured repository.',
+  api_impact: 'Analyze API route impact within the configured repository.',
+};
+
+const HARDENED_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
+const withoutRepositorySelectors = (tool: ToolDefinition): ToolDefinition => {
+  const { repo: _repo, service: _service, subgroup: _subgroup, crossDepth: _crossDepth, worktree: _worktree, ...properties } = tool.inputSchema.properties;
+  return {
+    ...tool,
+    description: HARDENED_DESCRIPTIONS[tool.name as (typeof HARDENED_TOOL_NAMES)[number]],
+    annotations: HARDENED_ANNOTATIONS,
+    inputSchema: {
+      ...tool.inputSchema,
+      properties,
+    },
+  };
+};
+
+export const HARDENED_MCP_TOOLS: ToolDefinition[] = HARDENED_TOOL_NAMES.map((name) => {
+  const tool = GITNEXUS_TOOLS.find((candidate) => candidate.name === name);
+  if (!tool) throw new Error(`Missing hardened MCP tool definition: ${name}`);
+  return withoutRepositorySelectors(tool);
+});

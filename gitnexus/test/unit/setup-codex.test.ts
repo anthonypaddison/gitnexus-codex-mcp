@@ -66,20 +66,20 @@ describe('setupCommand codex execution', () => {
     await fs.rm(tempHome, { recursive: true, force: true });
   });
 
-  it('invokes codex mcp add with shell enabled on Windows', async () => {
+  it('invokes codex mcp add with the local command on Windows', async () => {
     const { setupCommand } = await import('../../src/cli/setup.js');
 
     await setupCommand();
 
     expect(execFileMock).toHaveBeenCalledWith(
       'codex',
-      ['mcp', 'add', 'gitnexus', '--', 'cmd', '/c', 'npx', '-y', NPX_REF, 'mcp'],
+      ['mcp', 'add', 'gitnexus', '--', 'gitnexus', 'mcp'],
       { shell: true, windowsHide: true },
       expect.any(Function),
     );
   });
 
-  it('uses Windows npx fallback arguments when where returns only a non-wrapper shim', async () => {
+  it('uses the local command when where returns only a non-wrapper shim', async () => {
     execFileSyncMock.mockReturnValueOnce('C:\\Users\\dev\\AppData\\Roaming\\npm\\gitnexus\n');
 
     const { setupCommand } = await import('../../src/cli/setup.js');
@@ -88,7 +88,7 @@ describe('setupCommand codex execution', () => {
 
     expect(execFileMock).toHaveBeenCalledWith(
       'codex',
-      ['mcp', 'add', 'gitnexus', '--', 'cmd', '/c', 'npx', '-y', NPX_REF, 'mcp'],
+      ['mcp', 'add', 'gitnexus', '--', 'gitnexus', 'mcp'],
       { shell: true, windowsHide: true },
       expect.any(Function),
     );
@@ -103,7 +103,7 @@ describe('setupCommand codex execution', () => {
 
     expect(execFileMock).toHaveBeenCalledWith(
       'codex',
-      ['mcp', 'add', 'gitnexus', '--', 'npx', '-y', NPX_REF, 'mcp'],
+      ['mcp', 'add', 'gitnexus', '--', 'gitnexus', 'mcp'],
       { shell: false, windowsHide: true },
       expect.any(Function),
     );

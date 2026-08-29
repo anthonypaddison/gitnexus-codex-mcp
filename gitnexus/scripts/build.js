@@ -46,7 +46,7 @@ if (!fs.existsSync(SHARED_ROOT)) {
   }
   console.error(
     `[build] gitnexus-shared not found at ${SHARED_ROOT} and no dist/ exists.\n` +
-      'Are you running from the monorepo checkout? Run `npm install` from the repo root first.',
+      'Are you running from the monorepo checkout? Restore dependencies from an approved local source first.',
   );
   process.exit(1);
 }
@@ -113,8 +113,10 @@ const WEB_DEST = path.join(DIST, '..', 'web');
 if (fs.existsSync(path.join(WEB_ROOT, 'package.json'))) {
   console.log('[build] building gitnexus-web…');
   if (!fs.existsSync(path.join(WEB_ROOT, 'node_modules'))) {
-    console.log('[build] installing gitnexus-web dependencies…');
-    execSync('npm ci', { cwd: WEB_ROOT, stdio: 'inherit', timeout: BUILD_TIMEOUT_MS });
+    console.error(
+      '[local-safe] gitnexus-web dependencies are missing. Refusing to run npm ci because it can contact the npm registry.',
+    );
+    process.exit(1);
   }
   execSync('npm run build', { cwd: WEB_ROOT, stdio: 'inherit', timeout: BUILD_TIMEOUT_MS });
 

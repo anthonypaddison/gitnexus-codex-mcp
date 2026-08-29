@@ -195,7 +195,6 @@ function resolveCliPath() {
 }
 
 function runGitNexusCli(cliPath, args, cwd, timeout) {
-  const isWin = process.platform === 'win32';
   if (cliPath) {
     return spawnSync(process.execPath, [cliPath, ...args], {
       encoding: 'utf-8',
@@ -205,13 +204,11 @@ function runGitNexusCli(cliPath, args, cwd, timeout) {
       windowsHide: true,
     });
   }
-  return spawnSync(isWin ? 'npx.cmd' : 'npx', ['-y', 'gitnexus', ...args], {
-    encoding: 'utf-8',
-    timeout: timeout + 5000,
-    cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+  return {
+    status: 1,
+    stdout: '',
+    stderr: '[local-safe] gitnexus CLI path not found; npx fallback is disabled.\n',
+  };
 }
 
 function main() {

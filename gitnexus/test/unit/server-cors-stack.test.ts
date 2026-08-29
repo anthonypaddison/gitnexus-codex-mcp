@@ -63,7 +63,7 @@ describe('createServer CORS/PNA stack — OPTIONS preflight', () => {
       });
     });
 
-  it('OPTIONS /api/repos includes PNA and ACAO for allowed origin', async () => {
+  it('OPTIONS /api/repos omits ACAO for a remote origin', async () => {
     const app = buildCreateServerCorsStack();
     await start(app);
 
@@ -76,8 +76,8 @@ describe('createServer CORS/PNA stack — OPTIONS preflight', () => {
       },
     });
 
-    expect(res.status).toBe(204);
-    expect(res.headers.get('access-control-allow-origin')).toBe('https://gitnexus.vercel.app');
+    expect(res.status).toBe(404);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
     expect(res.headers.get('access-control-allow-private-network')).toBe('true');
   });
 

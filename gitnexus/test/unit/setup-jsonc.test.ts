@@ -218,7 +218,7 @@ describe('setupOpenCode — JSONC preservation', () => {
     expect(raw).not.toContain('gitnexus');
   });
 
-  it('uses npx fallback format when gitnexus binary is not on PATH', async () => {
+  it('uses the local command format when gitnexus binary is not on PATH', async () => {
     execFileSyncMock.mockImplementation(() => {
       throw new Error('not found');
     });
@@ -237,11 +237,11 @@ describe('setupOpenCode — JSONC preservation', () => {
 
     expect(config.mcp.gitnexus).toEqual({
       type: 'local',
-      command: ['npx', '-y', NPX_REF, 'mcp'],
+      command: ['gitnexus', 'mcp'],
     });
   });
 
-  it('uses Windows npx fallback when where returns only a non-wrapper shim', async () => {
+  it('uses the local command when where returns only a non-wrapper shim', async () => {
     setPlatform('win32');
     execFileSyncMock.mockReturnValueOnce('C:\\Users\\dev\\AppData\\Roaming\\npm\\gitnexus\n');
 
@@ -259,11 +259,11 @@ describe('setupOpenCode — JSONC preservation', () => {
 
     expect(config.mcp.gitnexus).toEqual({
       type: 'local',
-      command: ['cmd', '/c', 'npx', '-y', NPX_REF, 'mcp'],
+      command: ['gitnexus', 'mcp'],
     });
   });
 
-  it('uses Windows npx fallback when where returns only a .ps1 path', async () => {
+  it('uses the local command when where returns only a .ps1 path', async () => {
     setPlatform('win32');
     execFileSyncMock.mockReturnValueOnce('C:\\Users\\dev\\AppData\\Roaming\\npm\\gitnexus.ps1\n');
 
@@ -281,7 +281,7 @@ describe('setupOpenCode — JSONC preservation', () => {
 
     expect(config.mcp.gitnexus).toEqual({
       type: 'local',
-      command: ['cmd', '/c', 'npx', '-y', NPX_REF, 'mcp'],
+      command: ['gitnexus', 'mcp'],
     });
   });
 
@@ -405,7 +405,7 @@ describe('setupCursor — JSONC preservation', () => {
     expect(raw).toBe(corrupt);
   });
 
-  it('uses Windows npx fallback when where returns only a non-wrapper shim', async () => {
+  it('uses the local command when where returns only a non-wrapper shim', async () => {
     setPlatform('win32');
     execFileSyncMock.mockReturnValueOnce('C:\\Users\\dev\\AppData\\Roaming\\npm\\gitnexus\n');
 
@@ -416,8 +416,8 @@ describe('setupCursor — JSONC preservation', () => {
     const config = parseJsonc(raw);
 
     expect(config.mcpServers.gitnexus).toEqual({
-      command: 'cmd',
-      args: ['/c', 'npx', '-y', NPX_REF, 'mcp'],
+      command: 'gitnexus',
+      args: ['mcp'],
     });
   });
 });

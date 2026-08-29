@@ -32,6 +32,8 @@ import {
   listRegisteredRepos,
   cleanupOldKuzuFiles,
   canonicalizePath,
+  getStoragePaths,
+  loadMeta,
   RegistryAmbiguousTargetError,
   type RegistryEntry,
 } from '../../storage/repo-manager.js';
@@ -50,6 +52,7 @@ import {
 import { PhaseTimer } from '../../core/search/phase-timer.js';
 import { checkStalenessAsync, checkCwdMatch } from '../../core/git-staleness.js';
 import { logger } from '../../core/logger.js';
+import { resolveRegularFileWithinRoot } from '../../core/security/repository-paths.js';
 // AI context generation is CLI-only (gitnexus analyze)
 // import { generateAIContextFiles } from '../../cli/ai-context.js';
 
@@ -193,10 +196,13 @@ const isReadOnlyDbError = (err: unknown): boolean =>
  * responses (#324) and the CLI e2e test `tool output goes to stdout via
  * fd 1` asserts stdout parses cleanly as JSON.
  */
-function logQueryTiming(query: string, phases: Record<string, number>): void {
-  const totalMs = phases.wall ?? Object.values(phases).reduce((a, b) => a + b, 0);
-  const truncated = query.length > 80 ? `${query.slice(0, 80)}…` : query;
-  logger.debug({ query: truncated, totalMs, phases }, 'GitNexus query timing');
+export const queryTimingFields = (phases: Record<string, number>) => ({
+  totalMs: phases.wall ?? Object.values(phases).reduce((a, b) => a + b, 0),
+  phases,
+});
+
+export function logQueryTiming(phases: Record<string, number>): void {
+  logger.debug(queryTimingFields(phases), 'GitNexus query timing');
 }
 
 export interface CodebaseContext {
@@ -220,6 +226,22 @@ interface RepoHandle {
   remoteUrl?: string;
   stats?: RegistryEntry['stats'];
 }
+
+export interface LocalBackendOptions {
+  /** When set, bind this backend to exactly one indexed git repository. */
+  repositoryRoot?: string;
+}
+
+const HARDENED_BACKEND_TOOLS = new Set([
+  'query',
+  'context',
+  'detect_changes',
+  'impact',
+  'route_map',
+  'tool_map',
+  'shape_check',
+  'api_impact',
+]);
 
 /** Resolve symlinks for path comparison; falls back to path.resolve on error.
  * Uses `realpathSync.native` (not the pure-JS `realpathSync`) so that Windows
@@ -326,11 +348,21 @@ export class LocalBackend {
    * stderr noisy per DoD §2.8.
    */
   private warnedVectorUnsupported = false;
+  private readonly hardenedRepositoryRoot?: string;
+
+  constructor(options: LocalBackendOptions = {}) {
+    this.hardenedRepositoryRoot = options.repositoryRoot
+      ? path.resolve(options.repositoryRoot)
+      : undefined;
+  }
 
   /**
    * Cross-repo group tools (CLI). Shares logic with MCP `group_*` handlers.
    */
   getGroupService(): GroupService {
+    if (this.hardenedRepositoryRoot) {
+      throw new Error('Cross-repository groups are not available in hardened mode.');
+    }
     if (!this.groupToolSvc) {
       const port: GroupToolPort = {
         resolveRepo: (p) => this.resolveRepo(p),
@@ -356,8 +388,63 @@ export class LocalBackend {
    * Returns true if at least one repo is available.
    */
   async init(): Promise<boolean> {
+    if (this.hardenedRepositoryRoot) {
+      await this.loadHardenedRepository();
+      return true;
+    }
     await this.refreshRepos();
     return this.repos.size > 0;
+  }
+
+  /**
+   * Load the one configured on-disk index without consulting or updating the
+   * global repository registry. The metadata root must match the configured
+   * git root so a copied .gitnexus directory cannot redirect this process.
+   */
+  private async loadHardenedRepository(): Promise<void> {
+    if (!this.hardenedRepositoryRoot) return;
+
+    const repoPath = await fs.realpath(this.hardenedRepositoryRoot);
+    const gitRoot = getGitRoot(repoPath);
+    if (!gitRoot || canonicalizePath(gitRoot) !== canonicalizePath(repoPath)) {
+      throw new Error(`Configured hardened repository is not a git root: ${repoPath}`);
+    }
+
+    const { storagePath, lbugPath } = getStoragePaths(repoPath);
+    const meta = await loadMeta(storagePath);
+    if (!meta) {
+      throw new Error(`Configured hardened repository has no local .gitnexus index: ${repoPath}`);
+    }
+    if (canonicalizePath(meta.repoPath) !== canonicalizePath(repoPath)) {
+      throw new Error('Configured .gitnexus metadata does not match the hardened repository root.');
+    }
+
+    const name = path.basename(repoPath);
+    const id = this.repoId(name, repoPath);
+    const handle: RepoHandle = {
+      id,
+      name,
+      repoPath,
+      storagePath,
+      lbugPath,
+      indexedAt: meta.indexedAt,
+      lastCommit: meta.lastCommit,
+      remoteUrl: meta.remoteUrl,
+      stats: meta.stats,
+    };
+    this.repos.clear();
+    this.contextCache.clear();
+    this.repos.set(id, handle);
+    const stats = meta.stats ?? {};
+    this.contextCache.set(id, {
+      projectName: name,
+      stats: {
+        fileCount: stats.files ?? 0,
+        functionCount: stats.nodes ?? 0,
+        communityCount: stats.communities ?? 0,
+        processCount: stats.processes ?? 0,
+      },
+    });
   }
 
   /**
@@ -457,6 +544,16 @@ export class LocalBackend {
    * while the MCP server was running.
    */
   async resolveRepo(repoParam?: string): Promise<RepoHandle> {
+    if (this.hardenedRepositoryRoot) {
+      if (repoParam !== undefined) {
+        throw new Error('This MCP process is fixed to its configured repository and does not accept repo selectors.');
+      }
+      if (this.repos.size === 0) await this.loadHardenedRepository();
+      const handle = this.repos.values().next().value as RepoHandle | undefined;
+      if (!handle) throw new Error('Configured hardened repository is unavailable.');
+      return handle;
+    }
+
     let refreshedAfterAmbiguity = false;
     let result: RepoHandle | null;
     try {
@@ -722,6 +819,9 @@ export class LocalBackend {
       siblings?: Array<{ name: string; path: string; lastCommit: string }>;
     }>
   > {
+    if (this.hardenedRepositoryRoot) {
+      throw new Error('Repository discovery is not available in hardened mode.');
+    }
     await this.refreshRepos();
     const handles = [...this.repos.values()];
 
@@ -835,6 +935,19 @@ export class LocalBackend {
   // ─── Tool Dispatch ───────────────────────────────────────────────
 
   async callTool(method: string, params: any): Promise<any> {
+    if (this.hardenedRepositoryRoot) {
+      if (!HARDENED_BACKEND_TOOLS.has(method)) {
+        throw new Error(`Tool "${method}" is not available in hardened mode.`);
+      }
+      if (
+        params &&
+        typeof params === 'object' &&
+        Object.prototype.hasOwnProperty.call(params, 'repo')
+      ) {
+        throw new Error('This MCP process is fixed to its configured repository and does not accept repo selectors.');
+      }
+    }
+
     if (method === 'list_repos') {
       return this.listRepos();
     }
@@ -1158,7 +1271,7 @@ export class LocalBackend {
     // saved. Must come before summary() so it's included.
     timer.mark('wall', performance.now() - wallStart);
     const timing = timer.summary();
-    logQueryTiming(searchQuery, timing);
+    logQueryTiming(timing);
 
     return {
       processes,
@@ -2549,14 +2662,9 @@ export class LocalBackend {
       return { error: 'Either symbol_name or symbol_uid is required.' };
     }
 
-    /** Guard: ensure a file path resolves within the repo root (prevents path traversal) */
-    const assertSafePath = (filePath: string): string => {
-      const full = path.resolve(repo.repoPath, filePath);
-      if (!full.startsWith(repo.repoPath + path.sep) && full !== repo.repoPath) {
-        throw new Error(`Path traversal blocked: ${filePath}`);
-      }
-      return full;
-    };
+    /** Resolve only regular, in-root files; blocks traversal and symlink escape. */
+    const assertSafePath = (filePath: string): Promise<string> =>
+      resolveRegularFileWithinRoot(repo.repoPath, filePath);
 
     // Step 1: Find the target symbol (reuse context's lookup)
     const lookupResult = await this.context(repo, {
@@ -2598,7 +2706,7 @@ export class LocalBackend {
     // The definition itself
     if (sym.filePath && sym.startLine) {
       try {
-        const content = await fs.readFile(assertSafePath(sym.filePath), 'utf-8');
+        const content = await fs.readFile(await assertSafePath(sym.filePath), 'utf-8');
         const lines = content.split('\n');
         const lineIdx = sym.startLine - 1;
         if (lineIdx >= 0 && lineIdx < lines.length && lines[lineIdx].includes(oldName)) {
@@ -2632,7 +2740,7 @@ export class LocalBackend {
     for (const ref of allIncoming) {
       if (!ref.filePath) continue;
       try {
-        const content = await fs.readFile(assertSafePath(ref.filePath), 'utf-8');
+        const content = await fs.readFile(await assertSafePath(ref.filePath), 'utf-8');
         const lines = content.split('\n');
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].includes(oldName)) {
@@ -2693,7 +2801,7 @@ export class LocalBackend {
         if (graphFiles.has(normalizedFile)) continue; // already covered by graph
 
         try {
-          const content = await fs.readFile(assertSafePath(normalizedFile), 'utf-8');
+          const content = await fs.readFile(await assertSafePath(normalizedFile), 'utf-8');
           const lines = content.split('\n');
           const regex = new RegExp(`\\b${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
           for (let i = 0; i < lines.length; i++) {
@@ -2726,7 +2834,7 @@ export class LocalBackend {
       // Apply edits to files
       for (const change of allChanges) {
         try {
-          const fullPath = assertSafePath(change.file_path);
+          const fullPath = await assertSafePath(change.file_path);
           let content = await fs.readFile(fullPath, 'utf-8');
           const regex = new RegExp(`\\b${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
           content = content.replace(regex, new_name);

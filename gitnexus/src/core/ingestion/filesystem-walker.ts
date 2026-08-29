@@ -1,9 +1,9 @@
 import { isVerboseIngestionEnabled } from './utils/verbose.js';
 import { DEFAULT_MAX_FILE_SIZE_BYTES, getMaxFileSizeBytes } from './utils/max-file-size.js';
 import fs from 'fs/promises';
-import path from 'path';
 import { glob } from 'glob';
 import { createIgnoreFilter } from '../../config/ignore-service.js';
+import { resolveRegularFileWithinRoot } from '../security/repository-paths.js';
 
 import { logger } from '../logger.js';
 export interface FileEntry {
@@ -47,13 +47,21 @@ export const walkRepositoryPaths = async (
   repoPath: string,
   onProgress?: (current: number, total: number, filePath: string) => void,
 ): Promise<ScannedFile[]> => {
-  const ignoreFilter = await createIgnoreFilter(repoPath);
+  let repositoryRoot: string;
+  try {
+    repositoryRoot = await fs.realpath(repoPath);
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+  const ignoreFilter = await createIgnoreFilter(repositoryRoot);
   const maxFileSizeBytes = getMaxFileSizeBytes();
 
   const filtered = await glob('**/*', {
-    cwd: repoPath,
+    cwd: repositoryRoot,
     nodir: true,
     dot: false,
+    follow: false,
     ignore: ignoreFilter,
   });
   const entries: ScannedFile[] = [];
@@ -65,7 +73,7 @@ export const walkRepositoryPaths = async (
     const batch = filtered.slice(start, start + READ_CONCURRENCY);
     const results = await Promise.allSettled(
       batch.map(async (relativePath) => {
-        const fullPath = path.join(repoPath, relativePath);
+        const fullPath = await resolveRegularFileWithinRoot(repositoryRoot, relativePath);
         const stat = await fs.stat(fullPath);
         if (stat.size > maxFileSizeBytes) {
           skippedLarge++;
@@ -133,12 +141,19 @@ export const readFileContents = async (
   relativePaths: string[],
 ): Promise<Map<string, string>> => {
   const contents = new Map<string, string>();
+  let repositoryRoot: string;
+  try {
+    repositoryRoot = await fs.realpath(repoPath);
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return contents;
+    throw error;
+  }
 
   for (let start = 0; start < relativePaths.length; start += READ_CONCURRENCY) {
     const batch = relativePaths.slice(start, start + READ_CONCURRENCY);
     const results = await Promise.allSettled(
       batch.map(async (relativePath) => {
-        const fullPath = path.join(repoPath, relativePath);
+        const fullPath = await resolveRegularFileWithinRoot(repositoryRoot, relativePath);
         const content = await fs.readFile(fullPath, 'utf-8');
         return { path: relativePath, content };
       }),

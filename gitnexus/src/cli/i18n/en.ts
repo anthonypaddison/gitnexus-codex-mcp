@@ -108,6 +108,8 @@ export const en = {
     'Register an existing .gitnexus/ folder into the global registry (no re-analysis needed)',
   'help.command.serve.description': 'Start local HTTP server for web UI connection',
   'help.command.mcp.description': 'Start MCP server (stdio) — serves all indexed repos',
+  'help.command.mcpSafe.description':
+    'Start a fixed-repository, read-only MCP server from its local .gitnexus index',
   'help.command.list.description': 'List all indexed repositories',
   'help.command.status.description': 'Show index status for current repo',
   'help.command.doctor.description':
@@ -119,7 +121,7 @@ export const en = {
   'help.command.augment.description':
     'Augment a search pattern with knowledge graph context (used by hooks)',
   'help.command.publish.description':
-    'Notify the understand-quickly registry that this repo has a fresh GitNexus index. Opt-in: requires UNDERSTAND_QUICKLY_TOKEN (fine-grained PAT with `Repository dispatches: write` on looptech-ai/understand-quickly). No-op without the token. See https://github.com/looptech-ai/understand-quickly.',
+    'Disabled in this local-safe build to prevent outbound network calls.',
   'help.command.query.description':
     'Search the knowledge graph for execution flows related to a concept',
   'help.command.context.description':
@@ -181,6 +183,7 @@ export const en = {
   'help.option.index.allowNonGit': 'Allow registering folders that are not Git repositories',
   'help.option.port': 'Port number',
   'help.option.serve.host': 'Bind address (default: 127.0.0.1, use 0.0.0.0 for remote access)',
+  'help.option.mcpSafe.repo': 'Absolute path to the single indexed git repository',
   'help.option.force.confirmation': 'Skip confirmation prompt',
   'help.option.clean.all': 'Clean all indexed repos',
   'help.option.clean.lbugSidecars': 'Clean quarantined LadybugDB missing-shadow WAL sidecars',

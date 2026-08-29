@@ -85,10 +85,8 @@ describe('landingPageHtml', () => {
     expect(html).toContain('npm run build');
   });
 
-  it('contains the Vercel link with safe external attributes', () => {
-    expect(html).toContain('https://gitnexus.vercel.app');
-    expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noopener noreferrer"');
+  it('does not advertise a remote hosted Web UI', () => {
+    expect(html).not.toContain('https://gitnexus.vercel.app');
   });
 
   it('contains the Web UI not found message', () => {

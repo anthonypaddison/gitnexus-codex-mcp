@@ -47,11 +47,20 @@ function testFilePath(slug: string): string {
 
 function runVitest(testFile: string, env: Record<string, string>): boolean {
   try {
-    execFileSync('npx', ['vitest', 'run', testFile], {
+    const vitestBin = path.join(
+      ROOT,
+      'node_modules',
+      '.bin',
+      process.platform === 'win32' ? 'vitest.cmd' : 'vitest',
+    );
+    if (!fs.existsSync(vitestBin)) {
+      console.error('[local-safe] local vitest binary not found; refusing to use npx.');
+      return false;
+    }
+    execFileSync(vitestBin, ['run', testFile], {
       cwd: ROOT,
       env: { ...process.env, ...env },
       stdio: 'inherit',
-      shell: true,
     });
     return true;
   } catch {

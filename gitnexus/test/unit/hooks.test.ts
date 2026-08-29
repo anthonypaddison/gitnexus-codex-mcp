@@ -382,10 +382,14 @@ describe('windowsHide regression', () => {
       const spawnCount = countSpawnCalls(codeSource);
       const hideCount = (codeSource.match(/windowsHide\s*:\s*true/g) ?? []).length;
 
-      // Sanity: catch a refactor that accidentally deletes every
-      // spawn call (which would otherwise make the equality below
-      // trivially true at 0 == 0).
-      expect(spawnCount).toBeGreaterThan(0);
+      // A local-safe module may intentionally remove every spawn call (for
+      // example, the disabled embedding client). In that case it has no
+      // options object to validate; every remaining call still must hide the
+      // Windows console.
+      if (spawnCount === 0) {
+        expect(hideCount).toBe(0);
+        return;
+      }
       // One windowsHide per spawn-family call. We don't try to
       // match brace structure — a same-count proxy is sufficient
       // because every spawn site in these files passes an options
@@ -402,9 +406,9 @@ describe('Windows .cmd extension handling', () => {
     ['CJS', CJS_HOOK],
     ['Plugin', PLUGIN_HOOK],
   ] as const) {
-    it(`${label} hook uses .cmd extensions for Windows npx`, () => {
+    it(`${label} hook never spawns npx on Windows`, () => {
       const source = fs.readFileSync(hookPath, 'utf-8');
-      expect(source).toContain('npx.cmd');
+      expect(source).not.toMatch(/(?:spawn|spawnSync)\([^\n]*['"]npx/);
     });
   }
 
@@ -1346,7 +1350,7 @@ describe('PostToolUse staleness detection (integration)', () => {
       expect(result.stdout.trim()).toBe('');
     });
 
-    it(`${label}: includes --embeddings in suggestion when meta had embeddings`, () => {
+    it(`${label}: omits disabled embeddings when metadata reports embeddings`, () => {
       fs.writeFileSync(
         path.join(gitNexusDir, 'meta.json'),
         JSON.stringify({ lastCommit: 'deadbeef', stats: { embeddings: 42 } }),
@@ -1362,7 +1366,7 @@ describe('PostToolUse staleness detection (integration)', () => {
 
       const output = parseHookOutput(result.stdout);
       expect(output).not.toBeNull();
-      expect(output!.additionalContext).toContain('--embeddings');
+      expect(output!.additionalContext).not.toContain('--embeddings');
     });
 
     it(`${label}: omits --embeddings when meta had no embeddings`, () => {
