@@ -65,6 +65,17 @@ describe('BM25 search', () => {
 
       expect(missing).toEqual(['Function.function_fts']);
     });
+
+    it('fails closed when the local FTS extension is unavailable during indexing', async () => {
+      const { createFTSIndex } = await import('../../src/core/lbug/lbug-adapter.js');
+      const { createSearchFTSIndexes } = await import('../../src/core/search/fts-indexes.js');
+
+      vi.mocked(createFTSIndex).mockRejectedValueOnce(
+        new Error('FTS extension unavailable - cannot create FTS index File.file_fts.'),
+      );
+
+      await expect(createSearchFTSIndexes()).rejects.toThrow(/FTS extension unavailable/i);
+    });
   });
 
   describe('searchFTSFromLbug', () => {

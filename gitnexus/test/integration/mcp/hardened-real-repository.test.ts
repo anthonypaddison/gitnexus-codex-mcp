@@ -44,6 +44,7 @@ describe('hardened MCP real repository acceptance', () => {
         args: [LAUNCHER],
         cwd: GITNEXUS_ROOT,
         env: {
+          HOME: process.env.HOME ?? '',
           PATH: process.env.PATH ?? '',
           GITNEXUS_SAFE_REPOSITORY: realRepository!,
           GITNEXUS_LBUG_EXTENSION_INSTALL: 'auto',
@@ -78,14 +79,15 @@ describe('hardened MCP real repository acceptance', () => {
 
         const query = await client.callTool({
           name: 'query',
-          arguments: { query: 'hardened MCP launcher', limit: 3 },
+          arguments: { query: 'gitnexus-local-safe-mcp', limit: 3 },
         });
         expect(query.isError).not.toBe(true);
-        expect(query.content[0]?.text).toContain('processes');
+        expect(query.content[0]?.text).toContain('mcpSafeCommand');
+        expect(query.content[0]?.text).not.toContain('FTS indexes missing');
 
         const switched = await client.callTool({
           name: 'query',
-          arguments: { query: 'hardened MCP launcher', repo: '/tmp/other-repository' },
+          arguments: { query: 'gitnexus-local-safe-mcp', repo: '/tmp/other-repository' },
         });
         expect(switched).toMatchObject({
           isError: true,

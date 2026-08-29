@@ -20,7 +20,9 @@ failures: `npx` download-on-run; remote embeddings and model downloads; wiki
 generation or publishing through remote APIs; automatic remote cloning;
 automatic LadybugDB extension installation; global/multi-repository discovery;
 raw Cypher and mutation/rename tools; and a hosted Web UI. Missing optional
-local extensions are load-only and degrade locally rather than being installed.
+vector extensions degrade locally rather than being installed. FTS is required
+for a usable local-safe index, so an unavailable local FTS extension makes
+`analyze` or `analyze --repair-fts` fail explicitly.
 
 Build the checkout before registering the launcher:
 
@@ -358,21 +360,29 @@ If `npm install -g gitnexus` fails on native modules:
 npm install -g gitnexus
 ```
 
-### Analyze warns about unavailable FTS or VECTOR extensions
+### Local-safe FTS requirement and optional VECTOR extension
 
-GitNexus uses optional DuckDB extensions for BM25 and vector search. The
-local-safe MCP always forces `GITNEXUS_LBUG_EXTENSION_INSTALL=load-only`,
-regardless of inherited configuration: it will only load an extension already
-present locally and otherwise degrades the matching search feature. It never
-spawns an installer or downloads an extension at runtime.
+GitNexus uses the LadybugDB FTS extension for BM25 search and may use VECTOR
+for semantic search. Local-safe indexing and MCP always force
+`GITNEXUS_LBUG_EXTENSION_INSTALL=load-only`, regardless of inherited
+configuration. They load an extension already present in the local LadybugDB
+cache and never spawn an installer or download an extension at runtime.
 
-`GITNEXUS_LBUG_EXTENSION_INSTALL=auto` is an upstream CLI-only opt-in and is
-not a supported configuration for the local-safe MCP. The hardened launcher
-overrides it. The relevant local-safe configuration is:
+The FTS extension must therefore be provisioned on the host before the first
+local-safe analyze/repair run. If it is unavailable, indexing fails rather
+than recording an index that cannot answer keyword queries. Package dependency
+installation is a separate one-time setup concern; it is never performed by
+the runtime, indexing flow, or hardened launcher. The launcher preserves only
+the local cache-location environment needed by LadybugDB (for example `HOME`)
+while it resolves the already-installed extension.
+
+`GITNEXUS_LBUG_EXTENSION_INSTALL=auto` is not supported by local-safe
+indexing or MCP. The hardened paths override it. The relevant local-safe
+configuration is:
 
 | Variable | Values | Default | Effect |
 |----------|--------|---------|--------|
-| `GITNEXUS_LBUG_EXTENSION_INSTALL` | `load-only` | `load-only` | Loads only an already-installed extension; missing extensions are unavailable. |
+| `GITNEXUS_LBUG_EXTENSION_INSTALL` | `load-only` | `load-only` | Loads only an already-installed extension; missing FTS fails indexing, while VECTOR remains unavailable. |
 | `GITNEXUS_WAL_CHECKPOINT_THRESHOLD` | integer `>= -1` | `67108864` (64 MiB) | LadybugDB WAL auto-checkpoint threshold during analyze (bytes). Auto-checkpoint remains enabled; `-1` keeps Ladybug's stock ~16 MiB. Larger thresholds reduce checkpoint frequency but increase the WAL size at rotation time — choose a smaller value on disk-constrained environments. |
 
 ### Analysis runs out of memory

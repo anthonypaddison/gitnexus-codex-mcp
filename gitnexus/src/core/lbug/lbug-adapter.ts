@@ -833,10 +833,10 @@ const doInitLbug = async (dbPath: string, readOnly: boolean = false) => {
     }
   }
 
-  // FTS powers baseline search, so initialize it with the core DB. Read-only
-  // serve/MCP paths must never run DDL or trigger network INSTALL; analyze owns
-  // schema/index creation and extension installation.
-  await loadFTSExtension(undefined, readOnly ? { policy: 'load-only' } : {});
+  // FTS powers baseline search, so initialize it with the core DB. Both
+  // indexing and read paths only load an extension already present locally:
+  // neither may turn an inherited `auto` policy into a runtime INSTALL.
+  await loadFTSExtension(undefined, { policy: 'load-only' });
 
   currentDbPath = dbPath;
   return { db, conn };
@@ -1881,7 +1881,7 @@ export const createFTSIndex = async (
   const key = ftsIndexKey(tableName, indexName);
   if (ensuredFTSIndexes.has(key)) return;
 
-  if (!(await loadFTSExtension())) {
+  if (!(await loadFTSExtension(undefined, { policy: 'load-only' }))) {
     throw new Error(
       `FTS extension unavailable - cannot create FTS index ${tableName}.${indexName}. ` +
         'Run `gitnexus doctor` and ensure the LadybugDB FTS extension is installed and loadable on this machine.',

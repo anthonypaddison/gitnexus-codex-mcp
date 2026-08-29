@@ -14,10 +14,16 @@ if (!configuredRoot || !path.isAbsolute(configuredRoot)) {
 const root = await realpath(configuredRoot);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const cliEntry = path.resolve(scriptDir, '..', 'dist', 'cli', 'index.js');
+const localExtensionCacheEnvironment = {};
+for (const name of ['HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'XDG_DATA_HOME']) {
+  const value = process.env[name];
+  if (value) localExtensionCacheEnvironment[name] = value;
+}
 const child = spawn(process.execPath, [cliEntry, 'mcp-safe', '--repo', root], {
   cwd: root,
   env: {
     PATH: process.env.PATH,
+    ...localExtensionCacheEnvironment,
     GITNEXUS_SAFE_REPOSITORY: root,
     GITNEXUS_LBUG_EXTENSION_INSTALL: 'load-only',
     GITNEXUS_LOG_LEVEL: 'warn',
