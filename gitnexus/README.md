@@ -2,7 +2,7 @@
 
 **Graph-powered code intelligence for AI agents.** Index any codebase into a knowledge graph, then query it via MCP or CLI.
 
-> **GitNexus-local-safe is a deliberately restricted local product.** Its hardened
+> **gitnexus-local-safe is a deliberately restricted local product.** Its hardened
 > `mcp-safe` server is bound to one existing local repository and its existing
 > `.gitnexus` index. It does not make runtime outbound network calls, consult a
 > global repository registry, or download packages or extensions. The upstream
@@ -235,7 +235,7 @@ gitnexus group status <name>     # Check staleness of repos in a group
 
 ## Remote Embeddings
 
-Remote embeddings are unavailable in GitNexus-local-safe. The
+Remote embeddings are unavailable in gitnexus-local-safe. The
 `GITNEXUS_EMBEDDING_*` variables are ignored by the hardened process and no
 model download or HTTP embedding request is attempted. This section describes
 the upstream product only.
@@ -254,7 +254,7 @@ Works with Infinity, vLLM, TEI, llama.cpp, Ollama, LM Studio, or OpenAI. When un
 
 ## Multi-Repo Support
 
-GitNexus-local-safe does not support a global registry or multi-repository MCP
+gitnexus-local-safe does not support a global registry or multi-repository MCP
 operation. `mcp-safe` operates on exactly the repository path configured for
 its launcher. The following upstream behaviour is unavailable in this fork.
 
