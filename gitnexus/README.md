@@ -1,15 +1,15 @@
-# GitNexus
+# GitNexus Codex MCP
 
 **Graph-powered code intelligence for AI agents.** Index any codebase into a knowledge graph, then query it via MCP or CLI.
 
-> **gitnexus-local-safe is a deliberately restricted local product.** Its hardened
+> **GitNexus Codex MCP is a controlled local GitNexus integration for Codex.** Its
 > `mcp-safe` server is bound to one existing local repository and its existing
 > `.gitnexus` index. It does not make runtime outbound network calls, consult a
 > global repository registry, or download packages or extensions. The upstream
 > examples below that use `npx`, multi-repository MCP, publishing, wiki LLMs,
 > remote embeddings, cloning, or hosted Web UI are not supported by this fork.
 
-## Local-safe contract
+## Local MCP contract
 
 Use a locally built checkout and the fixed-repository launcher. The supported
 MCP surface is read-only and contains only `query`, `context`, `detect_changes`,
@@ -21,7 +21,7 @@ generation or publishing through remote APIs; automatic remote cloning;
 automatic LadybugDB extension installation; global/multi-repository discovery;
 raw Cypher and mutation/rename tools; and a hosted Web UI. Missing optional
 vector extensions degrade locally rather than being installed. FTS is required
-for a usable local-safe index, so an unavailable local FTS extension makes
+for a usable local MCP index, so an unavailable local FTS extension makes
 `analyze` or `analyze --repair-fts` fail explicitly.
 
 Build the checkout before registering the launcher:
@@ -29,7 +29,7 @@ Build the checkout before registering the launcher:
 ```bash
 npm run build
 GITNEXUS_SAFE_REPOSITORY=/absolute/path/to/repository \
-  node /absolute/path/to/gitnexus/scripts/gitnexus-local-safe-mcp.mjs
+  node /absolute/path/to/gitnexus/scripts/gitnexus-codex-mcp.mjs
 ```
 
 Works with **Cursor**, **Claude Code**, **Antigravity** (Google), **Codex**, **Windsurf**, **Cline**, **OpenCode**, and any MCP-compatible tool.
@@ -97,9 +97,9 @@ claude mcp add gitnexus -- cmd /c npx -y gitnexus@latest mcp
 codex mcp add gitnexus -- npx -y gitnexus@latest mcp
 ```
 
-### Codex local-safe single repository
+### Codex fixed-repository MCP
 
-`mcp-safe` is the hardened native mode for a locally built checkout. It binds
+`mcp-safe` is the fixed-repository native mode for a locally built checkout. It binds
 one MCP process to one absolute Git repository root and that root's existing
 `.gitnexus/` index. It does not read the global registry, expose repository
 selection, raw Cypher, rename/group tools, resources, or prompts. It never
@@ -111,10 +111,10 @@ repository path supplied by the MCP configuration:
 
 ```bash
 GITNEXUS_SAFE_REPOSITORY=/absolute/path/to/repository \
-  node /absolute/path/to/gitnexus/scripts/gitnexus-local-safe-mcp.mjs
+  node /absolute/path/to/gitnexus/scripts/gitnexus-codex-mcp.mjs
 ```
 
-The hardened surface contains only `query`, `context`, `detect_changes`,
+The restricted surface contains only `query`, `context`, `detect_changes`,
 `impact`, `route_map`, `tool_map`, `shape_check`, and `api_impact`. All are
 read-only and do not accept a `repo`, group, service, or worktree selector.
 
@@ -235,8 +235,8 @@ gitnexus group status <name>     # Check staleness of repos in a group
 
 ## Remote Embeddings
 
-Remote embeddings are unavailable in gitnexus-local-safe. The
-`GITNEXUS_EMBEDDING_*` variables are ignored by the hardened process and no
+Remote embeddings are unavailable in this fixed-repository MCP configuration. The
+`GITNEXUS_EMBEDDING_*` variables are ignored by the fixed-repository process and no
 model download or HTTP embedding request is attempted. This section describes
 the upstream product only.
 
@@ -254,8 +254,8 @@ Works with Infinity, vLLM, TEI, llama.cpp, Ollama, LM Studio, or OpenAI. When un
 
 ## Multi-Repo Support
 
-gitnexus-local-safe does not support a global registry or multi-repository MCP
-operation. `mcp-safe` operates on exactly the repository path configured for
+This fixed-repository MCP configuration does not support a global registry or
+multi-repository MCP operation. `mcp-safe` operates on exactly the repository path configured for
 its launcher. The following upstream behaviour is unavailable in this fork.
 
 GitNexus supports indexing multiple repositories. Each `gitnexus analyze` registers the repo in a global registry (`~/.gitnexus/registry.json`). The MCP server serves all indexed repos automatically.

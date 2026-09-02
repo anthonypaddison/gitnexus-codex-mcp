@@ -9,7 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const realRepository = process.env.GITNEXUS_REAL_MCP_REPO;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GITNEXUS_ROOT = path.resolve(__dirname, '..', '..', '..');
-const LAUNCHER = path.join(GITNEXUS_ROOT, 'scripts', 'gitnexus-local-safe-mcp.mjs');
+const LAUNCHER = path.join(GITNEXUS_ROOT, 'scripts', 'gitnexus-codex-mcp.mjs');
 const itIfRealRepository = realRepository ? it : it.skip;
 
 const processHasInternetSocket = (pid: number): boolean => {
@@ -79,7 +79,7 @@ describe('hardened MCP real repository acceptance', () => {
 
         const query = await client.callTool({
           name: 'query',
-          arguments: { query: 'gitnexus-local-safe-mcp', limit: 3 },
+          arguments: { query: 'mcpSafeCommand', limit: 3 },
         });
         expect(query.isError).not.toBe(true);
         expect(query.content[0]?.text).toContain('mcpSafeCommand');
@@ -87,7 +87,7 @@ describe('hardened MCP real repository acceptance', () => {
 
         const switched = await client.callTool({
           name: 'query',
-          arguments: { query: 'gitnexus-local-safe-mcp', repo: '/tmp/other-repository' },
+          arguments: { query: 'mcpSafeCommand', repo: '/tmp/other-repository' },
         });
         expect(switched).toMatchObject({
           isError: true,

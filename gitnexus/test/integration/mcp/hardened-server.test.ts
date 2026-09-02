@@ -9,7 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..', '..');
-const LAUNCHER = path.join(REPOSITORY_ROOT, 'scripts', 'gitnexus-local-safe-mcp.mjs');
+const LAUNCHER = path.join(REPOSITORY_ROOT, 'scripts', 'gitnexus-codex-mcp.mjs');
 const fixtureRoots: string[] = [];
 
 async function makeIndexedRepository(): Promise<string> {
