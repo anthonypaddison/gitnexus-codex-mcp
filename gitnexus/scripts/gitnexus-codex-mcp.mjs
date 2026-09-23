@@ -25,10 +25,11 @@ const child = spawn(process.execPath, [cliEntry, 'mcp-safe', '--repo', root], {
     PATH: process.env.PATH,
     ...localExtensionCacheEnvironment,
     GITNEXUS_SAFE_REPOSITORY: root,
+    GITNEXUS_PARENT_LIVENESS_FD: '3',
     GITNEXUS_LBUG_EXTENSION_INSTALL: 'load-only',
     GITNEXUS_LOG_LEVEL: 'warn',
   },
-  stdio: 'inherit',
+  stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
 });
 
 const forwardSignal = (signal) => {

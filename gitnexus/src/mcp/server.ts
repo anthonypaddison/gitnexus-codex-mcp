@@ -12,6 +12,7 @@
  */
 
 import { createRequire } from 'module';
+import { Socket } from 'node:net';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CompatibleStdioServerTransport } from './compatible-stdio-transport.js';
 import {
@@ -387,8 +388,17 @@ export async function startMCPServer(
   };
 
   // Handle graceful shutdown
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', () => shutdown(0));
+  process.on('SIGTERM', () => shutdown(0));
+
+  // The wrapper owns fd 3. Its closure signals parent loss even when the
+  // client still holds the MCP stdin pipe open.
+  if (process.env.GITNEXUS_PARENT_LIVENESS_FD === '3') {
+    const parentLiveness = new Socket({ fd: 3, readable: true, writable: false });
+    parentLiveness.on('end', () => shutdown(0));
+    parentLiveness.on('error', () => shutdown(1));
+    parentLiveness.resume();
+  }
 
   // Log crashes to stderr so they aren't silently lost.
   // uncaughtException is fatal — shut down.
