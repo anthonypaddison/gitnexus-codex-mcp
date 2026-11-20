@@ -417,7 +417,8 @@ const drainQueryResult = async (
   if (hasError) throw firstError;
 };
 
-const readQueryRows = async (
+// Materialize rows and release each native result before its connection is reused.
+export const readQueryRows = async (
   queryResult: lbug.QueryResult | lbug.QueryResult[],
 ): Promise<any[]> => {
   const results = Array.isArray(queryResult) ? queryResult : [queryResult];

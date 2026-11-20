@@ -136,6 +136,21 @@ acceptance('isolates independent real indexes and preserves the hardened launche
       }
     }
 
+    for (let i = 0; i < 5; i++) {
+      const repeated = await call(first.client, 'query', { query: 'ContextNeedle' });
+      expect(repeated.error).not.toBe(true);
+      expect(repeated.text).toContain('left.ts');
+      expect(repeated.text).toContain('right.ts');
+      if (process.platform === 'darwin') {
+        // Assert resource ownership rather than a machine-dependent RSS limit.
+        const openFiles = spawnSync('/usr/sbin/lsof', ['-nP', '-p', String(first.server), '-Ffn'], {
+          encoding: 'utf8',
+        });
+        expect(openFiles.status).toBe(0);
+        expect(openFiles.stdout).not.toContain('/.gitnexus/lbug');
+      }
+    }
+
     for (const args of [
       { context: 'one' }, { repository: 'unapproved' }, { repository: '../unapproved' },
       { repo: root('unapproved') }, { worktree: root('unapproved') }, { limit: '5' },

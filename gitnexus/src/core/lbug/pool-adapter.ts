@@ -19,7 +19,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import lbug from '@ladybugdb/core';
-import { isReadOnlyDbError, loadFTSExtension } from './lbug-adapter.js';
+import { isReadOnlyDbError, loadFTSExtension, readQueryRows } from './lbug-adapter.js';
 import {
   createLbugDatabase,
   isWalCorruptionError,
@@ -382,10 +382,7 @@ async function tryQuarantineForMissingShadow(
 async function probeDatabaseForShadowReplay(db: lbug.Database): Promise<void> {
   const conn = createConnection(db);
   try {
-    const queryResult = await conn.query(SHADOW_REPLAY_PROBE_QUERY);
-    const result = Array.isArray(queryResult) ? queryResult[0] : queryResult;
-    await result.getAll();
-    result.close?.();
+    await readQueryRows(await conn.query(SHADOW_REPLAY_PROBE_QUERY));
   } finally {
     await conn.close().catch(() => {});
   }
@@ -865,9 +862,8 @@ export const executeParameterized = async (
       throw new Error(`Prepare failed: ${errMsg}`);
     }
     const queryResult = await withTimeout(conn.execute(stmt, params), QUERY_TIMEOUT_MS, 'Execute');
-    const result = Array.isArray(queryResult) ? queryResult[0] : queryResult;
-    const rows = await result.getAll();
-    return rows;
+    // getAll() does not release the native result or its connection reference.
+    return await readQueryRows(queryResult);
   } catch (err) {
     if (isReadOnlyDbError(err)) {
       throw new Error('Write operations are not allowed. The pool adapter is read-only.');
