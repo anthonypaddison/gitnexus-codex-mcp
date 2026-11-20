@@ -7,6 +7,7 @@ import { Command } from 'commander';
 import { createRequire } from 'node:module';
 import { createLazyAction } from './lazy-action.js';
 import { registerGroupCommands } from './group.js';
+import { registerContextCommands } from './contexts.js';
 import { localizeCliHelp } from './help-i18n.js';
 import { t } from './i18n/index.js';
 
@@ -115,7 +116,8 @@ program
 program
   .command('mcp-safe')
   .description('Start a fixed-repository, read-only MCP server from its local .gitnexus index')
-  .requiredOption('--repo <path>', 'Absolute path to the single indexed git repository')
+  .option('--repo <path>', 'Absolute path to the single indexed git repository')
+  .option('--contexts <file>', 'Absolute path to the owner-only context configuration')
   .action(createLazyAction(() => import('./mcp.js'), 'mcpSafeCommand'));
 
 program
@@ -259,6 +261,7 @@ program
   .action(createLazyAction(() => import('./eval-server.js'), 'evalServerCommand'));
 
 registerGroupCommands(program);
+registerContextCommands(program);
 localizeCliHelp(program);
 
 program.parse(process.argv);

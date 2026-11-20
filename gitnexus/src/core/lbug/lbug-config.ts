@@ -144,6 +144,7 @@ type LbugModule = typeof lbug;
 
 export interface LbugDatabaseOptions {
   readOnly?: boolean;
+  bufferManagerSize?: number;
   throwOnWalReplayFailure?: boolean;
 }
 
@@ -182,7 +183,7 @@ export function createLbugDatabase(
   // .d.ts declares fewer args than the native constructor accepts.
   return new (lbugModule.Database as any)(
     databasePath,
-    0, // bufferManagerSize
+    options.bufferManagerSize ?? 0,
     false, // enableCompression (pinned for v0.16.0)
     options.readOnly ?? false,
     LBUG_MAX_DB_SIZE,

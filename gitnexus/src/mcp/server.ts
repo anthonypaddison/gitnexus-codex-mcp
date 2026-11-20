@@ -27,6 +27,7 @@ import {
 import { GITNEXUS_TOOLS, HARDENED_MCP_TOOLS, type ToolDefinition } from './tools.js';
 import { installGlobalStdoutSentinel } from './stdio-context.js';
 import type { LocalBackend } from './local/local-backend.js';
+import type { ContextRouter } from './context-router.js';
 import { getResourceDefinitions, getResourceTemplates, readResource } from './resources.js';
 
 /**
@@ -87,10 +88,10 @@ export interface MCPServerOptions {
   hardened?: boolean;
 }
 
-export function createMCPServer(backend: LocalBackend, options: MCPServerOptions = {}): Server {
-  const tools = options.tools ?? (options.hardened ? HARDENED_MCP_TOOLS : GITNEXUS_TOOLS);
+export function createMCPServer(backend: LocalBackend | ContextRouter, options: MCPServerOptions = {}): Server {
+  const hardened = options.hardened === true || !('resolveRepo' in backend);
+  const tools = options.tools ?? (hardened ? HARDENED_MCP_TOOLS : GITNEXUS_TOOLS);
   const toolNames = new Set(tools.map((tool) => tool.name));
-  const hardened = options.hardened === true;
   const require = createRequire(import.meta.url);
   const pkgVersion: string = require('../../package.json').version;
   const server = new Server(
@@ -150,6 +151,7 @@ export function createMCPServer(backend: LocalBackend, options: MCPServerOptions
     }
 
     try {
+      if (!('resolveRepo' in backend)) throw new Error('Resources unavailable.');
       const content = await readResource(uri, backend);
       return {
         contents: [
@@ -337,7 +339,7 @@ function getHardenedNextStepHint(
  * Start the MCP server on stdio transport (for CLI use).
  */
 export async function startMCPServer(
-  backend: LocalBackend,
+  backend: LocalBackend | ContextRouter,
   options: MCPServerOptions = {},
 ): Promise<void> {
   const server = createMCPServer(backend, options);

@@ -30,7 +30,8 @@
 import { installGlobalStdoutSentinel } from '../mcp/stdio-context.js';
 
 export interface McpSafeOptions {
-  repo: string;
+  repo?: string;
+  contexts?: string;
 }
 
 export const mcpCommand = async () => {
@@ -96,8 +97,27 @@ export const mcpCommand = async () => {
 export const mcpSafeCommand = async (options: McpSafeOptions) => {
   installGlobalStdoutSentinel();
 
-  if (!options?.repo) {
-    throw new Error('mcp-safe requires --repo <absolute-path>.');
+  if (Boolean(options?.repo) === Boolean(options?.contexts)) {
+    throw new Error('mcp-safe requires exactly one of --repo or --contexts.');
+  }
+
+  if (options.contexts) {
+    // Git environment overrides can redirect metadata and worktree reads.
+    for (const key of Object.keys(process.env)) if (key.startsWith('GIT_')) delete process.env[key];
+    process.env.GIT_OPTIONAL_LOCKS = '0';
+    process.env.GITNEXUS_LBUG_EXTENSION_INSTALL = 'load-only';
+    const [{ loadContextConfig }, { ContextRouter, CONTEXT_MCP_TOOLS }, { startMCPServer }] =
+      await Promise.all([
+        import('../core/contexts/config.js'),
+        import('../mcp/context-router.js'),
+        import('../mcp/server.js'),
+      ]);
+    if (!(await import('node:path')).isAbsolute(options.contexts)) {
+      throw new Error('mcp-safe --contexts requires an absolute policy path.');
+    }
+    const config = await loadContextConfig(options.contexts);
+    await startMCPServer(new ContextRouter(config), { hardened: true, tools: CONTEXT_MCP_TOOLS });
+    return;
   }
 
   const [{ realpath, lstat }, pathModule, { getGitRoot }, { startMCPServer }, { LocalBackend }] =
