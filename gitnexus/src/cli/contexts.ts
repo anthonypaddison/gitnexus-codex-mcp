@@ -154,6 +154,19 @@ export function registerContextCommands(program: Command): void {
     });
 
   contexts
+    .command('refresh <repository>')
+    .description('Build and activate a private snapshot for one approved repository')
+    .requiredOption('--expect-head <commit>', 'Exact full commit ID of the live checkout')
+    .action(async (alias: string, options: { expectHead: string }) => {
+      const { refreshContextRepository } = await import('../core/contexts/refresh.js');
+      const result = await refreshContextRepository({ alias, expectHead: options.expectHead, configFile: configFile() });
+      console.log(`Refreshed ${result.alias} at ${result.head}: ${result.root}`);
+      console.log(`Previous snapshot retained: ${result.previousRoot}`);
+      console.log(`Previous policy backup: ${result.policyBackup}`);
+      console.log('Start a new MCP connection to use the refreshed snapshot.');
+    });
+
+  contexts
     .command('status')
     .description('Report policy and index freshness without opening or creating indexes')
     .action(async () => {

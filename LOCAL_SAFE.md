@@ -108,8 +108,36 @@ repositories:
 older snapshot, with a commit count when known. `ready` describes the index's
 own checkout. Without a live mapping or sufficient readable history, live
 freshness is unknown. The live path is used only for Git metadata and never
-grants search access or triggers indexing. This compares commits and does not
-inspect uncommitted edits.
+grants direct search access. Freshness compares commits and does not inspect
+uncommitted edits or trigger indexing.
+
+### Refresh one approved snapshot manually
+
+```bash
+gitnexus contexts --config /path/to/contexts.yaml refresh example --expect-head <full-live-commit>
+gitnexus contexts --config /path/to/contexts.yaml status
+```
+
+Run the built local CLI on macOS with the system sandbox and a compatible
+LadybugDB FTS extension already in the local cache. The alias must be approved in
+the active context and have a `liveRoot`. Refresh materializes the specified
+commit under the approved snapshot parent and runs `analyze --index-only` with
+network access blocked and a private registry. It validates the index and a
+read-only FTS query before switching the alias. Dirty live changes never enter
+the snapshot. Unsupported Git entries such as symlinks or submodules fail the
+refresh rather than importing files outside the committed tree.
+The candidate contains the selected commit and its tree, without prior Git
+history. Revision comparisons against another commit are unavailable in that
+snapshot. Refresh rejects a Git pack or blob batch over 128 MiB.
+
+The original snapshot and its index remain on disk. Refresh prints the old and
+new snapshot paths and the private policy backup. Start a new MCP connection to
+use the new snapshot. Existing connections keep their previous snapshot.
+Repeated refreshes require additional disk space. To undo a successful refresh,
+compare the current policy against the backup first. If the only change is this
+alias's `root` and `identity`, atomically restore the backup while no other
+policy writers are running. If the policy changed since, restore only those two
+fields for the alias and preserve intervening edits.
 
 Context mode expects private index paths, rejects symlinks and WAL/shadow sidecars, and will report that
 operator recovery is required instead of attempting it. Index maintenance is

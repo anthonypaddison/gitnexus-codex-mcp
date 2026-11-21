@@ -19,7 +19,7 @@ export interface RepositoryIdentity {
 
 export interface ContextRepository {
   root: string;
-  /** Optional operator-selected Git root used only to compare HEAD metadata. */
+  /** Optional operator-selected Git root for freshness checks and manual refresh. */
   liveRoot?: string;
   identity: RepositoryIdentity;
 }
@@ -166,7 +166,7 @@ export async function loadContextConfig(file = DEFAULT_CONTEXT_CONFIG_PATH): Pro
   }
   checkOwner(await fs.lstat(directory), directory, true);
   await rejectMacAcl(directory);
-  const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.nlink !== 1) {
@@ -187,8 +187,12 @@ export async function loadContextConfig(file = DEFAULT_CONTEXT_CONFIG_PATH): Pro
 export async function saveContextConfig(
   config: ContextConfig,
   file = DEFAULT_CONTEXT_CONFIG_PATH,
+  options: { beforeWrite?: () => Promise<void>; restore?: ContextConfig } = {},
 ): Promise<void> {
-  const content = yaml.dump(config, { noRefs: true, lineWidth: 100 });
+  const content = options.restore
+    ? loadedBytes.get(options.restore)
+    : yaml.dump(config, { noRefs: true, lineWidth: 100 });
+  if (content === undefined) throw new Error('Load the original context policy before restoring it.');
   parseContextConfig(content);
   const target = path.resolve(file);
   const directory = path.dirname(target);
@@ -222,6 +226,13 @@ export async function saveContextConfig(
       await handle.sync();
     } finally {
       await handle.close();
+    }
+    if (options.beforeWrite) {
+      await options.beforeWrite();
+      const current = await loadContextConfig(target);
+      if (loadedBytes.get(current) !== expected) {
+        throw new Error('Context policy changed; reload it before saving.');
+      }
     }
     if (exists) await fs.rename(temporary, target);
     else await fs.link(temporary, target);

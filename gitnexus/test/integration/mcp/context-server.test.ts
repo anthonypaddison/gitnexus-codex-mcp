@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { expect, it } from 'vitest';
-import { saveContextConfig, validateRepositoryRoot, type ContextConfig } from '../../../src/core/contexts/config.js';
+import { loadContextConfig, saveContextConfig, validateRepositoryRoot, type ContextConfig } from '../../../src/core/contexts/config.js';
 
 const app = process.env.GITNEXUS_CONTEXT_TEST_APP;
 const acceptance = app ? it : it.skip;
@@ -105,7 +105,11 @@ acceptance('isolates independent real indexes and preserves the hardened launche
     const before = await Promise.all(['left', 'right'].map((repo) => snapshot(root(repo))));
     const liveRight = path.join(temp, 'live-right');
     git(temp, 'clone', '--quiet', '--no-hardlinks', root('right'), liveRight);
-    git(liveRight, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'live update');
+    const committed = 'export function RefreshedNeedle() { return 43; }\n';
+    await fs.writeFile(path.join(liveRight, 'right.ts'), committed);
+    await fs.writeFile(path.join(liveRight, 'AGENTS.md'), 'Fixture instructions.\n');
+    git(liveRight, 'add', 'right.ts', 'AGENTS.md');
+    git(liveRight, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'live update');
     const liveHead = git(liveRight, 'rev-parse', 'HEAD');
     const config: ContextConfig = {
       version: 1, parent, activeContext: 'both',
@@ -198,6 +202,57 @@ acceptance('isolates independent real indexes and preserves the hardened launche
     const stale = await call(second.client, 'query', { query: 'ContextNeedle' });
     expect(stale.text).toContain('"state": "stale"');
     expect(stale.text).toContain('"commitsBehind": 1');
+
+    if (process.platform === 'darwin') {
+      git(root('right'), 'update-ref', 'HEAD', indexedRight);
+      const liveFile = path.join(liveRight, 'right.ts');
+      const dirty = 'export function UncommittedNeedle() { return 44; }\n';
+      await fs.writeFile(liveFile, dirty);
+      const liveStatus = git(liveRight, '--no-optional-locks', 'status', '--porcelain');
+      const registry = path.join(analysisEnv.GITNEXUS_HOME, 'registry.json');
+      const registryBefore = await fs.readFile(registry);
+      const policyBefore = await fs.readFile(policy);
+      const startRefresh = performance.now();
+      execFileSync(process.execPath, [cli, 'contexts', '--config', policy, 'refresh', 'right', '--expect-head', liveHead], {
+        env: analysisEnv, timeout: 30_000, stdio: 'pipe',
+      });
+      const refreshMilliseconds = Math.round(performance.now() - startRefresh);
+      const updated = await loadContextConfig(policy);
+      expect(updated.contexts).toEqual(config.contexts);
+      expect(updated.activeContext).toBe('one');
+      expect(updated.repositories.left).toEqual(config.repositories.left);
+      expect(updated.repositories.right.root).not.toBe(root('right'));
+      expect(updated.repositories.right.liveRoot).toBe(liveRight);
+      expect(path.relative(parent, updated.repositories.right.root)).not.toMatch(/^\.\./);
+      const candidate = updated.repositories.right.root;
+      expect((await fs.stat(candidate)).mode & 0o777).toBe(0o700);
+      const backup = path.join(path.dirname(candidate), 'previous-contexts.yaml');
+      expect((await fs.stat(backup)).mode & 0o777).toBe(0o600);
+      expect(await fs.readFile(backup)).toEqual(policyBefore);
+      expect(await fs.readFile(path.join(candidate, 'right.ts'), 'utf8')).toBe(committed);
+      expect(await fs.readFile(path.join(candidate, 'AGENTS.md'), 'utf8')).toBe('Fixture instructions.\n');
+      expect(await fs.readdir(candidate)).not.toContain('CLAUDE.md');
+      expect(await fs.readdir(candidate)).not.toContain('.claude');
+      expect(await fs.readFile(registry)).toEqual(registryBefore);
+      expect(await fs.readFile(liveFile, 'utf8')).toBe(dirty);
+      expect(git(liveRight, '--no-optional-locks', 'status', '--porcelain')).toBe(liveStatus);
+      expect(git(liveRight, 'rev-parse', 'HEAD')).toBe(liveHead);
+      const statusAfter = execFileSync(process.execPath, [cli, 'contexts', '--config', policy, 'status'], {
+        env: analysisEnv, encoding: 'utf8', timeout: 10_000,
+      });
+      expect(statusAfter).toContain(`right: ready | freshness current | indexed=${liveHead} live=${liveHead}`);
+      expect((await call(second.client, 'query', { query: 'ContextNeedle' })).text).toContain(indexedRight);
+
+      const fresh = await connect(env);
+      const refreshed = await call(fresh.client, 'query', { query: 'RefreshedNeedle' });
+      const [current] = JSON.parse(refreshed.text.split('\n\n---')[0]).repositories;
+      expect(current.indexedRevision).toBe(liveHead);
+      expect(current.freshness).toEqual({ status: 'current', liveHead });
+      expect(JSON.stringify(current.result)).toContain('RefreshedNeedle');
+      await close(fresh);
+      const storage = (await fs.stat(path.join(candidate, '.gitnexus', 'lbug'))).size;
+      console.log(`Synthetic refresh: ${refreshMilliseconds} ms, ${storage} byte graph, previous graph retained`);
+    }
     await close(second);
 
     const single = await connect({ GITNEXUS_SAFE_REPOSITORY: root('left') });
