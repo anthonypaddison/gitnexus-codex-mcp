@@ -218,7 +218,12 @@ operator recovery is required instead of attempting it. Index maintenance is
 a separate operator action. Use synthetic or eligible noncommercial repositories
 until commercial permission is established for company use.
 
+Source MCP CI checks out the exact pull-request head on GitHub-hosted macOS
+arm64 with Node 22. It builds and typechecks the CLI and runs the focused MCP,
+policy, native cleanup and refresh failure-path tests. It uses no extension
+provisioning, so real FTS query and index-build acceptance is a separate check.
+
 The real context integration test requires a compiled checkout supplied as
-`GITNEXUS_CONTEXT_TEST_APP`. Use an isolated build if the checkout currently
-serves an installed integration. The test creates and cleans up only disposable
-synthetic repositories and their indexes.
+`GITNEXUS_CONTEXT_TEST_APP` and a compatible, already-provisioned FTS extension.
+Use an isolated build if the checkout currently serves an installed integration.
+The test creates and cleans up disposable synthetic repositories and indexes.
