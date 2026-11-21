@@ -19,6 +19,8 @@ export interface RepositoryIdentity {
 
 export interface ContextRepository {
   root: string;
+  /** Optional operator-selected Git root used only to compare HEAD metadata. */
+  liveRoot?: string;
   identity: RepositoryIdentity;
 }
 
@@ -90,11 +92,16 @@ export function parseContextConfig(content: string): ContextConfig {
   for (const [name, repository] of Object.entries(raw.repositories)) {
     validateContextName(name);
     mapping(repository, `Repository ${name}`);
-    exactKeys(repository, ['root', 'identity'], `Repository ${name}`);
+    exactKeys(repository, ['root', 'identity', 'liveRoot'], `Repository ${name}`);
     absolute(repository.root, `Repository ${name} root`);
     if (!beneath(repository.root, raw.parent)) throw new Error(`Repository ${name} is outside parent.`);
     if (roots.has(repository.root)) throw new Error(`Duplicate repository root: ${repository.root}`);
     roots.add(repository.root);
+    let liveRoot: string | undefined;
+    if (repository.liveRoot !== undefined) {
+      absolute(repository.liveRoot, `Repository ${name} liveRoot`);
+      liveRoot = repository.liveRoot;
+    }
     mapping(repository.identity, `Repository ${name} identity`);
     exactKeys(repository.identity, ['device', 'inode'], `Repository ${name} identity`);
     for (const field of ['device', 'inode']) {
@@ -107,6 +114,7 @@ export function parseContextConfig(content: string): ContextConfig {
     }
     repositories[name] = {
       root: repository.root,
+      ...(liveRoot === undefined ? {} : { liveRoot }),
       identity: {
         device: repository.identity.device as string,
         inode: repository.identity.inode as string,

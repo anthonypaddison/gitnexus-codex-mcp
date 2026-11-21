@@ -87,9 +87,31 @@ sequentially unless given an exact `repository` alias. Other tools require an
 alias when the context has multiple members. An optional `context` argument
 must match the startup context. Context mode disables full source snippets and
 supports staged or committed-revision comparisons for `detect_changes`.
-It skips stale or unknown indexes and labels each result or unavailable member.
-Freshness is based on the indexed Git commit. Context mode expects private
-index paths, rejects symlinks and WAL/shadow sidecars, and will report that
+It skips indexes that are stale or unknown relative to their own approved
+checkout. A ready snapshot can also be behind its corresponding live checkout.
+For that comparison, set an optional absolute, canonical `liveRoot` in the
+owner-only policy on the existing repository entry. Keep `root` and `identity`
+pointing to the approved indexed checkout.
+
+```yaml
+repositories:
+  example:
+    root: /path/to/approved/snapshots/example
+    identity:
+      device: '123'
+      inode: '456'
+    liveRoot: /path/to/live/example
+```
+
+`contexts status` and MCP results report the indexed revision, live HEAD and
+`current`, `behind`, `ahead/diverged` or `unknown`. `behind` results describe an
+older snapshot, with a commit count when known. `ready` describes the index's
+own checkout. Without a live mapping or sufficient readable history, live
+freshness is unknown. The live path is used only for Git metadata and never
+grants search access or triggers indexing. This compares commits and does not
+inspect uncommitted edits.
+
+Context mode expects private index paths, rejects symlinks and WAL/shadow sidecars, and will report that
 operator recovery is required instead of attempting it. Index maintenance is
 a separate operator action. Use synthetic or eligible noncommercial repositories
 until commercial permission is established for company use.

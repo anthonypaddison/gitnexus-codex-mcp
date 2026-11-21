@@ -1,11 +1,9 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { rejectMacAcl, validateRepositoryRoot } from './config.js';
+import { rejectMacAcl, validateRepositoryRoot, type ContextRepository } from './config.js';
+import { compareLiveFreshness, readCheckoutGit } from './live-freshness.js';
 import { INCREMENTAL_SCHEMA_VERSION } from '../../storage/repo-manager.js';
 
-const git = promisify(execFile);
 const revision = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
 export interface ContextIndexStatus {
@@ -64,12 +62,11 @@ export async function inspectContextIndex(
 
     const indexedRevision: string = meta.lastCommit;
     try {
-      const run = async (args: string[]) =>
-        (await git('git', args, { cwd: root, encoding: 'utf8', timeout: 3000 })).stdout.trim();
-      const head = await run(['rev-parse', '--verify', 'HEAD']);
+      const head = await readCheckoutGit(root, ['rev-parse', '--verify', 'HEAD^{commit}']);
       if (head === indexedRevision) return { state: 'ready', indexedRevision, head };
-      const [ahead, behind] = (await run(['rev-list', '--left-right', '--count', indexedRevision + '...HEAD']))
-        .split(/\s+/).map(Number);
+      const [ahead, behind] = (await readCheckoutGit(root, [
+        'rev-list', '--left-right', '--count', `${indexedRevision}...${head}`, '--',
+      ])).split(/\s+/).map(Number);
       return { state: 'stale', indexedRevision, head, ...(ahead === 0 ? { commitsBehind: behind } : {}) };
     } catch {
       return { state: 'unknown', indexedRevision };
@@ -77,4 +74,12 @@ export async function inspectContextIndex(
   } catch (error) {
     return { state: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'incompatible' };
   }
+}
+
+// Index safety is checked against the indexed checkout itself. Live freshness is
+// independent, so an older but intact snapshot can still answer with a label.
+export async function inspectContextRepository(parent: string, repository: ContextRepository) {
+  const index = await inspectContextIndex(parent, repository.root, repository.identity);
+  const freshness = await compareLiveFreshness(index.indexedRevision, repository.liveRoot);
+  return { ...index, freshness };
 }

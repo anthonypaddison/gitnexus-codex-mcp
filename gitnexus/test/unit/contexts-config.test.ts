@@ -91,6 +91,20 @@ describe('owner-controlled repository contexts', () => {
     expect(() => parseContextConfig(JSON.stringify({ ...config, contexts: { ['x'.repeat(65)]: [] } }))).toThrow('Invalid name');
   });
 
+  it('keeps an optional live checkout separate from the approved index root', () => {
+    const root = path.join(parent, 'snapshot');
+    const liveRoot = path.join(directory, 'live');
+    const data = {
+      ...empty(),
+      repositories: { example: { root, liveRoot, identity: { device: '1', inode: '2' } } },
+    };
+    expect(parseContextConfig(JSON.stringify(data)).repositories.example).toEqual({
+      root, liveRoot, identity: { device: '1', inode: '2' },
+    });
+    data.repositories.example.liveRoot = '../live';
+    expect(() => parseContextConfig(JSON.stringify(data))).toThrow('absolute');
+  });
+
   it('setup does not approve candidates and explicit commands manage and revoke membership', async () => {
     const root = path.join(parent, 'service');
     await repo(root);

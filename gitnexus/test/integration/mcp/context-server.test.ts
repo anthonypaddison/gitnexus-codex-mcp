@@ -103,15 +103,26 @@ acceptance('isolates independent real indexes and preserves the hardened launche
       for (const file of ['meta.json', 'lbug']) await fs.chmod(path.join(repo, '.gitnexus', file), 0o600);
     }
     const before = await Promise.all(['left', 'right'].map((repo) => snapshot(root(repo))));
+    const liveRight = path.join(temp, 'live-right');
+    git(temp, 'clone', '--quiet', '--no-hardlinks', root('right'), liveRight);
+    git(liveRight, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'live update');
+    const liveHead = git(liveRight, 'rev-parse', 'HEAD');
     const config: ContextConfig = {
       version: 1, parent, activeContext: 'both',
       repositories: {
-        left: { root: root('left'), identity: await validateRepositoryRoot(root('left'), parent) },
-        right: { root: root('right'), identity: await validateRepositoryRoot(root('right'), parent) },
+        left: { root: root('left'), liveRoot: root('left'), identity: await validateRepositoryRoot(root('left'), parent) },
+        right: { root: root('right'), liveRoot: liveRight, identity: await validateRepositoryRoot(root('right'), parent) },
       },
       contexts: { both: ['left', 'right'], one: ['right'] },
     };
     await saveContextConfig(config, policy);
+    const status = execFileSync(process.execPath, [cli, 'contexts', '--config', policy, 'status'], {
+      env: analysisEnv, encoding: 'utf8', timeout: 10_000,
+    });
+    const leftHead = git(root('left'), 'rev-parse', 'HEAD');
+    expect(status).toContain(`left: ready | freshness current | indexed=${leftHead} live=${leftHead}`);
+    const indexedRight = git(root('right'), 'rev-parse', 'HEAD');
+    expect(status).toContain(`right: ready | freshness behind (by 1) | indexed=${indexedRight} live=${liveHead}`);
     const env = { GITNEXUS_SAFE_CONTEXT_CONFIG: policy };
     const first = await connect(env);
     expect((await first.client.listTools()).tools.map((tool) => tool.name)).toEqual(tools);
@@ -122,6 +133,11 @@ acceptance('isolates independent real indexes and preserves the hardened launche
     const report = JSON.parse(reply.text.split('\n\n---')[0]);
     expect(report.repositories.map((item: { repository: string; state: string }) => [item.repository, item.state]))
       .toEqual([['left', 'ready'], ['right', 'ready']]);
+    expect(report.repositories[0].freshness).toEqual({
+      status: 'current', liveHead: report.repositories[0].indexedRevision,
+    });
+    expect(report.repositories[1].indexedRevision).toBe(indexedRight);
+    expect(report.repositories[1].freshness).toEqual({ status: 'behind', liveHead, commitsBehind: 1 });
     expect(JSON.stringify(report.repositories[0].result)).toContain('left.ts');
     expect(JSON.stringify(report.repositories[0].result)).not.toContain('right.ts');
     expect(JSON.stringify(report.repositories[1].result)).toContain('right.ts');
@@ -153,7 +169,7 @@ acceptance('isolates independent real indexes and preserves the hardened launche
 
     for (const args of [
       { context: 'one' }, { repository: 'unapproved' }, { repository: '../unapproved' },
-      { repo: root('unapproved') }, { worktree: root('unapproved') }, { limit: '5' },
+      { repo: root('unapproved') }, { worktree: root('unapproved') }, { liveRoot: root('unapproved') }, { limit: '5' },
     ]) expect((await call(first.client, 'query', { query: 'ContextNeedle', ...args })).error).toBe(true);
     expect((await call(first.client, 'context', { name: 'ContextNeedle' })).error).toBe(true);
     expect((await call(first.client, 'context', { name: 'ContextNeedle', repository: 'right' })).text).toContain('right.ts');

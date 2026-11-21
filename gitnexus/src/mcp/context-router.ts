@@ -2,7 +2,7 @@ import { LocalBackend } from './local/local-backend.js';
 import { HARDENED_MCP_TOOLS } from './tools.js';
 import type { ContextConfig } from '../core/contexts/config.js';
 import { ContextDatabaseOpenError } from '../core/lbug/pool-adapter.js';
-import { inspectContextIndex } from '../core/contexts/index-safety.js';
+import { inspectContextRepository } from '../core/contexts/index-safety.js';
 
 const MAX_RESPONSE_BYTES = 28 * 1024;
 const MAX_PENDING = 4;
@@ -13,6 +13,9 @@ export const CONTEXT_MCP_TOOLS = HARDENED_MCP_TOOLS.map((tool) => {
   }
   return {
     ...tool,
+    description: tool.name === 'query'
+      ? `${tool.description} A live freshness status of behind labels results from an older snapshot.`
+      : tool.description,
     inputSchema: {
       ...tool.inputSchema,
       additionalProperties: false,
@@ -102,7 +105,7 @@ export class ContextRouter {
     for (const alias of selected) {
       if (this.stopping) throw new Error('Context server is shutting down.');
       const entry = this.config.repositories[alias];
-      const status = await inspectContextIndex(this.config.parent, entry.root, entry.identity);
+      const status = await inspectContextRepository(this.config.parent, entry);
       const item = { repository: alias, ...status };
       result.repositories.push(item);
       if (status.state !== 'ready') continue;

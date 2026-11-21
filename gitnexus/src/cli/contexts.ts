@@ -11,7 +11,7 @@ import {
   validateRepositoryRoot,
   type ContextConfig,
 } from '../core/contexts/config.js';
-import { inspectContextIndex } from '../core/contexts/index-safety.js';
+import { inspectContextRepository } from '../core/contexts/index-safety.js';
 
 export function registerContextCommands(program: Command): void {
   const contexts = program
@@ -69,7 +69,9 @@ export function registerContextCommands(program: Command): void {
       if (Object.entries(config.repositories).some(([other, repo]) => other !== name && repo.root === resolved)) {
         throw new Error('This root is already approved under another name.');
       }
-      config.repositories[name] = { root: resolved, identity };
+      const previous = config.repositories[name];
+      const liveRoot = previous?.root === resolved ? previous.liveRoot : undefined;
+      config.repositories[name] = { root: resolved, identity, ...(liveRoot ? { liveRoot } : {}) };
       await save(config);
       console.log(`Approved ${name}: ${resolved}`);
       console.log('No index was created or changed.');
@@ -161,8 +163,14 @@ export function registerContextCommands(program: Command): void {
       console.log(`Active context: ${config.activeContext ?? '(none)'}`);
       for (const [name, repository] of Object.entries(config.repositories)) {
         try {
-          const status = await inspectContextIndex(config.parent, repository.root, repository.identity);
-          console.log(`${name}: ${status.state}${status.commitsBehind === undefined ? '' : ` (${status.commitsBehind} commits behind)`}`);
+          const status = await inspectContextRepository(config.parent, repository);
+          const { freshness } = status;
+          const indexDrift = status.commitsBehind === undefined ? '' : ` (${status.commitsBehind} commits behind indexed checkout)`;
+          const liveDrift = freshness.commitsBehind === undefined ? '' : ` (by ${freshness.commitsBehind})`;
+          console.log(
+            `${name}: ${status.state}${indexDrift} | freshness ${freshness.status}${liveDrift} | ` +
+              `indexed=${status.indexedRevision ?? 'unknown'} live=${freshness.liveHead ?? 'unknown'}`,
+          );
         } catch (error) {
           console.log(`${name}: unavailable (${error instanceof Error ? error.message : String(error)})`);
         }
