@@ -1,6 +1,7 @@
 # Local-Safe Changes
 
-This copy is patched to prevent GitNexus from initiating outbound network calls.
+The supported local MCP and manual refresh paths disable automatic downloads.
+Initial dependency and FTS provisioning are explicit operator actions.
 
 Disabled runtime paths:
 
@@ -43,44 +44,117 @@ uses `mcp-safe --contexts /absolute/contexts.yaml` or sets
 of the launcher variables. The default CLI policy path is
 `~/.gitnexus/contexts.yaml`.
 
-From a locally built checkout, use the following operator workflow. The paths
-and aliases here are examples for eligible noncommercial repositories.
+### Build the fork from source
+
+Use Apple silicon macOS, Git, Node 22 with matching local headers, npm, Python 3,
+Apple's command-line developer tools and Codex Desktop. The validated setup
+uses Homebrew Node 22, a locked LadybugDB binary, and an explicit local Kotlin
+grammar build. Optional Dart, Protobuf and Swift native grammar builds are
+outside this installation. Windows and Linux have no release acceptance.
+Refresh requires macOS `sandbox-exec` or a functioning Linux
+`/usr/bin/bwrap`; the Linux path remains unverified.
+
+Once the release exists, use its pinned source tag and compare the checkout's
+commit to the SHA in the authenticated release notes before installing:
 
 ```sh
-NODE=/opt/homebrew/opt/node@22/bin/node
-"$NODE" gitnexus/dist/cli/index.js contexts setup --parent ~/Projects
-"$NODE" gitnexus/dist/cli/index.js contexts approve example ~/Projects/example
-"$NODE" gitnexus/dist/cli/index.js contexts add personal example
-"$NODE" gitnexus/dist/cli/index.js contexts use personal
-"$NODE" gitnexus/dist/cli/index.js contexts status
+git clone --branch v0.1.0-experimental.1 --single-branch \
+  https://github.com/anthonypaddison/gitnexus-codex-mcp.git
+cd gitnexus-codex-mcp
+git rev-parse HEAD
+node --version
+(cd gitnexus-shared && npm ci --ignore-scripts)
+(cd gitnexus && npm ci --ignore-scripts)
+cp gitnexus/node_modules/@ladybugdb/core-darwin-arm64/lbugjs.node \
+  gitnexus/node_modules/@ladybugdb/core/lbugjs.node
+NODE_PREFIX="$(dirname "$(dirname "$(node -p 'process.execPath')")")"
+test -f "$NODE_PREFIX/include/node/node.h"
+(cd gitnexus/node_modules/tree-sitter-kotlin && \
+  /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' \
+  node ../node-gyp/bin/node-gyp.js rebuild --nodedir="$NODE_PREFIX")
+GITNEXUS_BUILD_CLI_ONLY=1 node gitnexus/scripts/build.js
+node gitnexus/dist/cli/index.js --version
 ```
 
-Setup lists candidates without approving or indexing them. `approve` records
-the canonical root and directory identity. Use `remove <context> <repository>`
-for membership, and `revoke <repository>` to remove approval everywhere.
-These commands leave indexes intact. Policy changes apply to new connections.
-Close existing clients when revoking access. Use `contexts --config <file>` to
-choose another policy file. A version 1 policy contains `parent`,
-`repositories` (alias to root and device/inode identity), `contexts` (context
-to approved aliases), and optional `activeContext`. Use the CLI to record
-identity and save the file with mode 0600.
+The clone and dependency install can use the network. Review the source and
+lockfiles first. The copy uses the locked Apple silicon binary from the
+dependency install, avoiding an automatic installer or source compilation.
+The Kotlin build uses the supplied local Node headers with network access
+blocked. The CLI build requires no web dependencies.
+Use the absolute path to this checkout and your Node executable in Codex.
+Avoid the unqualified npm package and inherited upstream install commands.
 
-For an approved Desktop rollout, build the checkout locally using the existing
-Node 22 runtime, then put the following registration in the trusted
-`~/Projects/.codex/config.toml`. Preserve unrelated entries and keep the global
-registration disabled. Before rollout, check that a nested project does not
-load an unintended second registration. Reopen the target Desktop session and
-verify the effective tool inventory there.
+For FTS, provision the official extension matching the locked
+`@ladybugdb/core` native engine and OS/architecture before indexing. Consult
+[Ladybug's extension setup](https://docs.ladybugdb.com/extensions/) and
+use its matching native release to explicitly install FTS into the same user's
+cache. Fetching an extension is a separate operator action. The fork uses
+load-only mode, so a missing or incompatible extension causes indexing to fail
+or keyword features to degrade. Do not substitute an unverified native library.
+
+### Set up and query one approved context
+
+Choose a noncommercial repository you control and keep the snapshot and policy
+outside repositories you share. The following commands use the fictional
+`$HOME/Projects/example`. Run from the fork checkout:
+
+```sh
+umask 077
+CLI="$PWD/gitnexus/dist/cli/index.js"
+DATA="$HOME/.gitnexus"
+POLICY="$DATA/contexts.local.yaml"
+SNAPSHOTS="$DATA/snapshots"
+LIVE="$HOME/Projects/example"
+mkdir -p "$SNAPSHOTS"
+git -c init.templateDir= clone --no-hardlinks -- "$LIVE" "$SNAPSHOTS/example"
+node "$CLI" contexts --config "$POLICY" setup --parent "$SNAPSHOTS"
+node "$CLI" contexts --config "$POLICY" approve example "$SNAPSHOTS/example"
+node "$CLI" contexts --config "$POLICY" add personal example
+node "$CLI" contexts --config "$POLICY" use personal
+GITNEXUS_HOME="$DATA" GITNEXUS_LBUG_EXTENSION_INSTALL=load-only \
+  node "$CLI" analyze --index-only "$SNAPSHOTS/example"
+chmod go-rwx "$SNAPSHOTS/example/.gitnexus" \
+  "$SNAPSHOTS/example/.gitnexus/meta.json" "$SNAPSHOTS/example/.gitnexus/lbug"
+node "$CLI" contexts --config "$POLICY" status
+```
+
+Only index explicitly selected repositories. `--index-only` keeps agent
+instructions and skills out of the indexing side effects. The analyzer can
+update the local registry and candidate's Git exclusion. Setup only discovers
+candidates. The CLI writes an owner-only policy with the correct root and
+filesystem identity. See the optional example mapping below for freshness and
+manual refresh.
+
+Back up the project's existing `.codex/config.toml`, if present. In the
+trusted project where you want the integration, add the following table using
+real absolute paths. The sample paths are placeholders and TOML does not expand
+shell variables. Keep the file local to your machine.
 
 ```toml
 [mcp_servers.gitnexus]
 enabled = true
-command = "/opt/homebrew/opt/node@22/bin/node"
-args = ["/Users/anthonypaddison/Projects/gitnexus-codex-mcp/gitnexus/scripts/gitnexus-codex-mcp.mjs"]
+command = "/absolute/path/to/node"
+args = ["/absolute/path/to/fork/gitnexus/scripts/gitnexus-codex-mcp.mjs"]
 
 [mcp_servers.gitnexus.env]
-GITNEXUS_SAFE_CONTEXT_CONFIG = "/Users/anthonypaddison/.gitnexus/contexts.yaml"
+GITNEXUS_SAFE_REPOSITORY = ""
+GITNEXUS_SAFE_CONTEXT_CONFIG = "/absolute/private/path/contexts.local.yaml"
 ```
+
+Review project trust, the executable path, the private policy, and tool
+approvals before opening a fresh Codex chat in that project. The expected tools
+are `query`, `context`, `detect_changes`, `impact`, `route_map`, `tool_map`,
+`shape_check`, and `api_impact`. Query an expected symbol with
+`gitnexus.query`, selecting `context: personal` and `repository: example`.
+Verify that the returned alias and indexed revision match the intended snapshot.
+
+Use `contexts remove <context> <alias>` to remove one membership or
+`contexts revoke <alias>` to revoke all access for that alias. These commands
+preserve snapshots. Close existing clients when revoking access. To disable
+the integration, set the project registration's `enabled = false` or restore
+your previous project configuration after reviewing intervening edits. Close
+its connected sessions. To uninstall, remove the fork checkout only after
+disconnecting it and preserving any required local data.
 
 Each connection uses only its startup context. `query` searches its members
 sequentially unless given an exact `repository` alias. Other tools require an

@@ -21,6 +21,8 @@ Thumbs.db
 
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 docker/.env
@@ -108,3 +110,9 @@ local_docs/
 .agents/
 .context/
 gitnexus/web/
+
+# Private machine and release-validation artifacts
+/.codex/
+/.trigger-tree/
+contexts.local.yaml
+previous-contexts.yaml

@@ -1,2 +1,10 @@
 * text=auto eol=lf
 .husky/* text eol=lf
+.codex export-ignore
+.gitnexus export-ignore
+.trigger-tree export-ignore
+contexts.local.yaml export-ignore
+previous-contexts.yaml export-ignore
+.history export-ignore
+.sisyphus export-ignore
+.github/workflows.local-safe-disabled export-ignore

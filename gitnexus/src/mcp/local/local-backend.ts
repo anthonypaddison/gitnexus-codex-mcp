@@ -948,9 +948,9 @@ export class LocalBackend {
       if (
         params &&
         typeof params === 'object' &&
-        Object.prototype.hasOwnProperty.call(params, 'repo')
+        (Object.hasOwn(params, 'repo') || Object.hasOwn(params, 'worktree'))
       ) {
-        throw new Error('This MCP process is fixed to its configured repository and does not accept repo selectors.');
+        throw new Error('This MCP process is fixed to its configured repository and does not accept repo or worktree selectors.');
       }
     }
 

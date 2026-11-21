@@ -16,7 +16,8 @@ async function makeIndexedRepository(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gitnexus-hardened-mcp-'));
   fixtureRoots.push(root);
   execFileSync('git', ['init', '-q'], { cwd: root });
-  await fs.mkdir(path.join(root, '.gitnexus', 'lbug'), { recursive: true });
+  await fs.mkdir(path.join(root, '.gitnexus'));
+  await fs.writeFile(path.join(root, '.gitnexus', 'lbug'), 'handshake fixture');
   await fs.writeFile(
     path.join(root, '.gitnexus', 'meta.json'),
     JSON.stringify({
@@ -43,6 +44,17 @@ afterEach(async () => {
 });
 
 describe('hardened MCP launcher', () => {
+  it('preserves recovery sidecars and refuses to open their index', async () => {
+    const root = await makeIndexedRepository();
+    const sidecar = path.join(root, '.gitnexus', 'lbug.wal');
+    await fs.writeFile(sidecar, 'recovery fixture');
+    expect(() => execFileSync(process.execPath, [LAUNCHER], {
+      env: { HOME: root, PATH: process.env.PATH ?? '', GITNEXUS_SAFE_REPOSITORY: root },
+      stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 8000,
+    })).toThrow(/requires operator recovery/);
+    expect(await fs.readFile(sidecar, 'utf8')).toBe('recovery fixture');
+  });
+
   it('uses a fixed local index, exposes the reduced protocol, and exits with its child', async () => {
     const root = await makeIndexedRepository();
     const client = new Client({ name: 'hardened-launcher-test', version: '0.0.0' });

@@ -2,6 +2,20 @@
 
 All notable changes to GitNexus will be documented in this file.
 
+## Fork v0.1.0-experimental.1 (planned)
+
+- Add a project-scoped, eight-tool read-only MCP with named repository contexts
+  and explicit approvals.
+- Report indexed and live revisions and support manual refresh of one approved
+  snapshot, with a verified policy backup and a guarded switch.
+- Close pooled native results and terminate the launcher and server on
+  disconnect or parent loss.
+- Disable the inherited automatic upstream MCP bootstrap. Document source
+  installation, local FTS provisioning, and recovery under the upstream
+  PolyForm Noncommercial licence.
+
+The upstream changelog follows.
+
 ## [Unreleased]
 
 ### Changed
