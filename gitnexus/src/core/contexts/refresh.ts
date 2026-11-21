@@ -141,12 +141,25 @@ function findLocalGit(): Promise<string> {
     });
     const developer = stdout.trim();
     if (!path.isAbsolute(developer)) throw new Error('No local Apple Git toolchain is active.');
-    const git = await fs.realpath(path.join(developer, 'usr/bin/git'));
-    const stat = await fs.stat(git);
-    if (!stat.isFile() || stat.uid !== 0 || (stat.mode & 0o022) !== 0 || !(stat.mode & 0o111)) {
-      throw new Error('The active Apple Git executable has unsafe ownership or permissions.');
+    const candidates = new Set([
+      path.join(developer, 'usr/bin/git'),
+      '/Library/Developer/CommandLineTools/usr/bin/git',
+    ]);
+    for (const candidate of candidates) {
+      try {
+        const git = await fs.realpath(candidate);
+        const stat = await fs.stat(git);
+        if (!stat.isFile() || (stat.uid !== 0 && stat.uid !== process.getuid?.()) ||
+            (stat.mode & 0o022) !== 0 || !(stat.mode & 0o111)) continue;
+        await promisify(execFile)('/usr/bin/codesign', [
+          '--verify', '--strict', '--requirement', 'anchor apple and identifier "com.apple.git"', git,
+        ], { env: { PATH: '/usr/bin:/bin' }, timeout: 3000, maxBuffer: 8192 });
+        return git;
+      } catch {
+        // Try the standalone Apple tools if the selected copy is absent or untrusted.
+      }
     }
-    return git;
+    throw new Error('No Apple-signed Git executable with safe ownership and permissions is available.');
   })();
 }
 
