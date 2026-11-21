@@ -30,7 +30,8 @@
 import { installGlobalStdoutSentinel } from '../mcp/stdio-context.js';
 
 export interface McpSafeOptions {
-  repo: string;
+  repo?: string;
+  contexts?: string;
 }
 
 export const mcpCommand = async () => {
@@ -96,8 +97,30 @@ export const mcpCommand = async () => {
 export const mcpSafeCommand = async (options: McpSafeOptions) => {
   installGlobalStdoutSentinel();
 
-  if (!options?.repo) {
-    throw new Error('mcp-safe requires --repo <absolute-path>.');
+  if (Boolean(options?.repo) === Boolean(options?.contexts)) {
+    throw new Error('mcp-safe requires exactly one of --repo or --contexts.');
+  }
+
+  // Git environment overrides can redirect metadata and worktree reads.
+  for (const key of Object.keys(process.env)) if (key.toUpperCase().startsWith('GIT_')) delete process.env[key];
+  process.env.GIT_OPTIONAL_LOCKS = '0';
+  process.env.GIT_NO_LAZY_FETCH = '1';
+  process.env.GIT_ALLOW_PROTOCOL = '';
+  process.env.GITNEXUS_LBUG_EXTENSION_INSTALL = 'load-only';
+
+  if (options.contexts) {
+    const [{ loadContextConfig }, { ContextRouter, CONTEXT_MCP_TOOLS }, { startMCPServer }] =
+      await Promise.all([
+        import('../core/contexts/config.js'),
+        import('../mcp/context-router.js'),
+        import('../mcp/server.js'),
+      ]);
+    if (!(await import('node:path')).isAbsolute(options.contexts)) {
+      throw new Error('mcp-safe --contexts requires an absolute policy path.');
+    }
+    const config = await loadContextConfig(options.contexts);
+    await startMCPServer(new ContextRouter(config), { hardened: true, tools: CONTEXT_MCP_TOOLS });
+    return;
   }
 
   const [{ realpath, lstat }, pathModule, { getGitRoot }, { startMCPServer }, { LocalBackend }] =
@@ -121,11 +144,25 @@ export const mcpSafeCommand = async (options: McpSafeOptions) => {
     throw new Error(`mcp-safe --repo must be a git repository root: ${repoPath}`);
   }
 
-  // This is a process-level guard for all runtime extension callers. The
-  // hardened backend has no indexing path and no MCP tool can override it.
-  process.env.GITNEXUS_LBUG_EXTENSION_INSTALL = 'load-only';
+  const storage = pathModule.join(repoPath, '.gitnexus');
+  if (!(await lstat(storage)).isDirectory() || await realpath(storage) !== storage) {
+    throw new Error('The hardened index directory must be an ordinary directory within the fixed repository.');
+  }
+  for (const name of ['meta.json', 'lbug']) {
+    const stat = await lstat(pathModule.join(storage, name));
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error('Hardened index files must be ordinary files with one link.');
+  }
+  for (const sidecar of ['lbug.wal', 'lbug.shadow']) {
+    try {
+      await lstat(pathModule.join(storage, sidecar));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    throw new Error('The hardened index requires operator recovery before opening.');
+  }
 
-  const backend = new LocalBackend({ repositoryRoot: repoPath });
+  const backend = new LocalBackend({ repositoryRoot: repoPath, strictReadOnly: true });
   await backend.init();
   await startMCPServer(backend, { hardened: true });
 };

@@ -110,7 +110,9 @@ if (fs.existsSync(cliEntry)) fs.chmodSync(cliEntry, 0o755);
 const WEB_ROOT = path.resolve(ROOT, '..', 'gitnexus-web');
 const WEB_DEST = path.join(DIST, '..', 'web');
 
-if (fs.existsSync(path.join(WEB_ROOT, 'package.json'))) {
+if (process.env.GITNEXUS_BUILD_CLI_ONLY === '1') {
+  console.log('[build] skipping web UI (CLI-only build requested)');
+} else if (fs.existsSync(path.join(WEB_ROOT, 'package.json'))) {
   console.log('[build] building gitnexus-web…');
   if (!fs.existsSync(path.join(WEB_ROOT, 'node_modules'))) {
     console.error(

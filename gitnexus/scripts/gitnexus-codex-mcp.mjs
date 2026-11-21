@@ -6,12 +6,14 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const configuredRoot = process.env.GITNEXUS_SAFE_REPOSITORY;
-if (!configuredRoot || !path.isAbsolute(configuredRoot)) {
-  process.stderr.write('GITNEXUS_SAFE_REPOSITORY must be an absolute repository path.\n');
+const contextConfig = process.env.GITNEXUS_SAFE_CONTEXT_CONFIG;
+const configuredPath = contextConfig ?? configuredRoot;
+if (Boolean(configuredRoot) === Boolean(contextConfig) || !configuredPath || !path.isAbsolute(configuredPath)) {
+  process.stderr.write('Set exactly one absolute path in GITNEXUS_SAFE_REPOSITORY or GITNEXUS_SAFE_CONTEXT_CONFIG.\n');
   process.exit(2);
 }
 
-const root = await realpath(configuredRoot);
+const root = configuredRoot ? await realpath(configuredRoot) : undefined;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const cliEntry = path.resolve(scriptDir, '..', 'dist', 'cli', 'index.js');
 const localExtensionCacheEnvironment = {};
@@ -19,12 +21,13 @@ for (const name of ['HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'XDG_DATA_HO
   const value = process.env[name];
   if (value) localExtensionCacheEnvironment[name] = value;
 }
-const child = spawn(process.execPath, [cliEntry, 'mcp-safe', '--repo', root], {
-  cwd: root,
+const selection = contextConfig ? ['--contexts', contextConfig] : ['--repo', root];
+const child = spawn(process.execPath, [cliEntry, 'mcp-safe', ...selection], {
+  cwd: root ?? process.cwd(),
   env: {
     PATH: process.env.PATH,
     ...localExtensionCacheEnvironment,
-    GITNEXUS_SAFE_REPOSITORY: root,
+    ...(root ? { GITNEXUS_SAFE_REPOSITORY: root } : {}),
     GITNEXUS_PARENT_LIVENESS_FD: '3',
     GITNEXUS_LBUG_EXTENSION_INSTALL: 'load-only',
     GITNEXUS_LOG_LEVEL: 'warn',

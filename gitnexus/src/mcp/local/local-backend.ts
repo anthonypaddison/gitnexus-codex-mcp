@@ -230,6 +230,7 @@ interface RepoHandle {
 export interface LocalBackendOptions {
   /** When set, bind this backend to exactly one indexed git repository. */
   repositoryRoot?: string;
+  strictReadOnly?: boolean;
 }
 
 const HARDENED_BACKEND_TOOLS = new Set([
@@ -350,7 +351,10 @@ export class LocalBackend {
   private warnedVectorUnsupported = false;
   private readonly hardenedRepositoryRoot?: string;
 
+  private readonly strictReadOnly: boolean;
+
   constructor(options: LocalBackendOptions = {}) {
+    this.strictReadOnly = options.strictReadOnly === true;
     this.hardenedRepositoryRoot = options.repositoryRoot
       ? path.resolve(options.repositoryRoot)
       : undefined;
@@ -420,7 +424,7 @@ export class LocalBackend {
     }
 
     const name = path.basename(repoPath);
-    const id = this.repoId(name, repoPath);
+    const id = this.strictReadOnly ? `context:${repoPath}` : this.repoId(name, repoPath);
     const handle: RepoHandle = {
       id,
       name,
@@ -735,6 +739,8 @@ export class LocalBackend {
     // Throttle staleness checks to at most once per 5 seconds per repo to
     // avoid an fs.readFile round-trip on every tool invocation.
     if (this.initializedRepos.has(repoId) && isLbugReady(repoId)) {
+      // Context requests use a fresh backend and close it at the end of each call.
+      if (this.strictReadOnly) return;
       const now = Date.now();
       const lastCheck = this.lastStalenessCheck.get(repoId) ?? 0;
       if (now - lastCheck < 5000) return; // Checked recently — skip
@@ -770,7 +776,7 @@ export class LocalBackend {
     }
 
     try {
-      await initLbug(repoId, handle.lbugPath);
+      await initLbug(repoId, handle.lbugPath, this.strictReadOnly);
       this.initializedRepos.add(repoId);
     } catch (err: any) {
       // If lock error, mark as not initialized so next call retries
@@ -942,9 +948,9 @@ export class LocalBackend {
       if (
         params &&
         typeof params === 'object' &&
-        Object.prototype.hasOwnProperty.call(params, 'repo')
+        (Object.hasOwn(params, 'repo') || Object.hasOwn(params, 'worktree'))
       ) {
-        throw new Error('This MCP process is fixed to its configured repository and does not accept repo selectors.');
+        throw new Error('This MCP process is fixed to its configured repository and does not accept repo or worktree selectors.');
       }
     }
 
@@ -1389,6 +1395,7 @@ export class LocalBackend {
    * Semantic vector search helper
    */
   private async semanticSearch(repo: RepoHandle, query: string, limit: number): Promise<any[]> {
+    if (this.strictReadOnly) return [];
     try {
       // Check if embedding table exists before loading the model (avoids heavy model init when embeddings are off)
       const tableCheck = await executeQuery(
@@ -2487,7 +2494,7 @@ export class LocalBackend {
       //
       // Start with the auto-detected value; override with the validated
       // explicit param when provided. This avoids a dead initial assignment.
-      let diffCwd = resolveWorktreeCwd(repo.repoPath, process.cwd());
+      let diffCwd = this.strictReadOnly ? repo.repoPath : resolveWorktreeCwd(repo.repoPath, process.cwd());
       if (params.worktree) {
         if (!path.isAbsolute(params.worktree)) {
           return {
@@ -2513,6 +2520,12 @@ export class LocalBackend {
       // maxBuffer raised from Node's 1MB default to 256MB to avoid ENOBUFS on
       // repos with large unstaged/untracked diffs (e.g. unignored build folders).
       // See issue: spawnSync git ENOBUFS in detect_changes(scope="unstaged").
+      if (this.strictReadOnly) {
+        diffArgs.splice(1, 0, '--no-ext-diff', '--no-textconv', '--ignore-submodules=all');
+        diffArgs.unshift('-c', 'core.fsmonitor=false');
+        if (scope === 'compare') diffArgs.push('HEAD');
+        diffArgs.push('--');
+      }
       diffOutput = execFileSync('git', diffArgs, {
         cwd: diffCwd,
         encoding: 'utf-8',
@@ -4333,7 +4346,11 @@ export class LocalBackend {
   }
 
   async disconnect(): Promise<void> {
-    await closeLbug(); // close all connections
+    if (this.strictReadOnly) {
+      for (const id of this.repos.keys()) await closeLbug(id);
+    } else {
+      await closeLbug();
+    }
     // Note: we intentionally do NOT call disposeEmbedder() here.
     // ONNX Runtime's native cleanup segfaults on macOS and some Linux configs,
     // and importing the embedder module on Node v24+ crashes if onnxruntime

@@ -19,7 +19,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import lbug from '@ladybugdb/core';
-import { isReadOnlyDbError, loadFTSExtension } from './lbug-adapter.js';
+import { isReadOnlyDbError, loadFTSExtension, readQueryRows } from './lbug-adapter.js';
 import {
   createLbugDatabase,
   isWalCorruptionError,
@@ -84,6 +84,7 @@ interface PoolEntry {
   dbPath: string;
   /** Set to true when the pool entry is closed — checkin will close orphaned connections */
   closed: boolean;
+  strictReadOnly?: boolean;
 }
 
 const pool = new Map<string, PoolEntry>();
@@ -207,7 +208,7 @@ function evictLRU(): void {
  * shared Database ref.  Only closes the Database when no other repoIds
  * reference it (refCount === 0).
  */
-function closeOne(repoId: string): void {
+async function closeOne(repoId: string): Promise<void> {
   const entry = pool.get(repoId);
   if (!entry) return;
 
@@ -217,9 +218,7 @@ function closeOne(repoId: string): void {
   // unhandled rejections.  Native close() returns Promise<void> but can crash
   // the N-API destructor on macOS/Windows; deferring to process exit lets
   // dangerouslyIgnoreUnhandledErrors absorb the crash.
-  for (const conn of entry.available) {
-    conn.close().catch(() => {});
-  }
+  const closes = entry.available.map((conn) => conn.close().catch(() => {}));
   entry.available.length = 0;
 
   // Checked-out connections can't be closed here — they're in-flight.
@@ -239,7 +238,11 @@ function closeOne(repoId: string): void {
         shared.refCount = 0;
         shared.ftsLoaded = false;
       } else {
-        shared.db.close().catch(() => {});
+        if (entry.strictReadOnly) {
+          closes.push(Promise.all(closes).then(() => shared.db.close()).catch(() => {}));
+        } else {
+          shared.db.close().catch(() => {});
+        }
         dbCache.delete(entry.dbPath);
       }
     }
@@ -256,6 +259,7 @@ function closeOne(repoId: string): void {
       // Isolate listener failures — teardown must complete.
     }
   }
+  if (entry.strictReadOnly) await Promise.all(closes);
 }
 
 /**
@@ -378,10 +382,7 @@ async function tryQuarantineForMissingShadow(
 async function probeDatabaseForShadowReplay(db: lbug.Database): Promise<void> {
   const conn = createConnection(db);
   try {
-    const queryResult = await conn.query(SHADOW_REPLAY_PROBE_QUERY);
-    const result = Array.isArray(queryResult) ? queryResult[0] : queryResult;
-    await result.getAll();
-    result.close?.();
+    await readQueryRows(await conn.query(SHADOW_REPLAY_PROBE_QUERY));
   } finally {
     await conn.close().catch(() => {});
   }
@@ -487,7 +488,7 @@ async function tryQuarantineAndReopen(dbPath: string, repoId: string): Promise<l
 }
 
 /** Deduplicates concurrent initLbug calls for the same repoId */
-const initPromises = new Map<string, Promise<void>>();
+const initPromises = new Map<string, { dbPath: string; strictReadOnly: boolean; promise: Promise<void> }>();
 
 /**
  * Initialize (or reuse) a Database + connection pool for a specific repo.
@@ -496,9 +497,12 @@ const initPromises = new Map<string, Promise<void>>();
  * Concurrent calls for the same repoId are deduplicated — the second caller
  * awaits the first's in-progress init rather than starting a redundant one.
  */
-export const initLbug = async (repoId: string, dbPath: string): Promise<void> => {
+export const initLbug = async (repoId: string, dbPath: string, strictReadOnly = false): Promise<void> => {
   const existing = pool.get(repoId);
   if (existing) {
+    if (strictReadOnly && (existing.dbPath !== dbPath || !existing.strictReadOnly)) {
+      throw new Error('Repository pool identity mismatch.');
+    }
     existing.lastUsed = Date.now();
     return;
   }
@@ -507,10 +511,15 @@ export const initLbug = async (repoId: string, dbPath: string): Promise<void> =>
   // prevents double-init race when multiple parallel tool calls
   // trigger initialization for the same repo simultaneously.
   const pending = initPromises.get(repoId);
-  if (pending) return pending;
+  if (pending) {
+    if (strictReadOnly && (pending.dbPath !== dbPath || !pending.strictReadOnly)) {
+      throw new Error('Repository pool identity mismatch.');
+    }
+    return pending.promise;
+  }
 
-  const promise = doInitLbug(repoId, dbPath);
-  initPromises.set(repoId, promise);
+  const promise = doInitLbug(repoId, dbPath, strictReadOnly);
+  initPromises.set(repoId, { dbPath, strictReadOnly, promise });
   try {
     await promise;
   } finally {
@@ -523,7 +532,13 @@ export const initLbug = async (repoId: string, dbPath: string): Promise<void> =>
  * Pool entry is registered LAST so concurrent executeQuery calls see either
  * "not initialized" (and throw) or a fully ready pool — never a half-built one.
  */
-async function doInitLbug(repoId: string, dbPath: string): Promise<void> {
+export class ContextDatabaseOpenError extends Error {
+  constructor(readonly state: 'incompatible' | 'recovery_required') {
+    super('Context index cannot be opened safely.');
+  }
+}
+
+async function doInitLbug(repoId: string, dbPath: string, strictReadOnly: boolean): Promise<void> {
   // Check if database exists
   try {
     await fs.stat(dbPath);
@@ -536,6 +551,25 @@ async function doInitLbug(repoId: string, dbPath: string): Promise<void> {
   // Reuse an existing native Database if another repoId already opened this path.
   // This prevents buffer manager exhaustion from multiple mmap regions on the same file.
   let shared = dbCache.get(dbPath);
+  if (strictReadOnly) {
+    if (shared) throw new Error('Context database is already open.');
+    let db: lbug.Database | undefined;
+    try {
+      db = createLbugDatabase(lbug, dbPath, {
+        readOnly: true,
+        throwOnWalReplayFailure: true,
+        bufferManagerSize: 128 * 1024 * 1024,
+      });
+      await db.init();
+      await probeDatabaseForShadowReplay(db);
+    } catch (error) {
+      await db?.close().catch(() => {});
+      const reason = error instanceof Error ? error.message : '';
+      throw new ContextDatabaseOpenError(/wal|shadow|checkpoint/i.test(reason) ? 'recovery_required' : 'incompatible');
+    }
+    shared = { db, refCount: 0, ftsLoaded: false };
+    dbCache.set(dbPath, shared);
+  }
   if (!shared) {
     // Open in read-only mode — MCP server never writes to the database.
     // This allows multiple MCP server instances to read concurrently, and
@@ -597,7 +631,7 @@ async function doInitLbug(repoId: string, dbPath: string): Promise<void> {
   preWarmActive = true;
   const available: lbug.Connection[] = [];
   try {
-    for (let i = 0; i < MAX_CONNS_PER_REPO; i++) {
+    for (let i = 0; i < (strictReadOnly ? 1 : MAX_CONNS_PER_REPO); i++) {
       available.push(createConnection(db));
     }
   } finally {
@@ -645,6 +679,7 @@ async function doInitLbug(repoId: string, dbPath: string): Promise<void> {
     lastUsed: Date.now(),
     dbPath,
     closed: false,
+    strictReadOnly,
   });
   ensureIdleTimer();
 }
@@ -827,9 +862,8 @@ export const executeParameterized = async (
       throw new Error(`Prepare failed: ${errMsg}`);
     }
     const queryResult = await withTimeout(conn.execute(stmt, params), QUERY_TIMEOUT_MS, 'Execute');
-    const result = Array.isArray(queryResult) ? queryResult[0] : queryResult;
-    const rows = await result.getAll();
-    return rows;
+    // getAll() does not release the native result or its connection reference.
+    return await readQueryRows(queryResult);
   } catch (err) {
     if (isReadOnlyDbError(err)) {
       throw new Error('Write operations are not allowed. The pool adapter is read-only.');
@@ -849,12 +883,12 @@ export const executeParameterized = async (
  */
 export const closeLbug = async (repoId?: string): Promise<void> => {
   if (repoId) {
-    closeOne(repoId);
+    await closeOne(repoId);
     return;
   }
 
   for (const id of [...pool.keys()]) {
-    closeOne(id);
+    await closeOne(id);
   }
 
   if (idleTimer) {

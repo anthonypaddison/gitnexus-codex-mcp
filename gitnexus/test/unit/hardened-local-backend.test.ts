@@ -61,6 +61,7 @@ describe('LocalBackend hardened mode', () => {
     await expect(backend.callTool('query', { query: 'anything', repo: otherRoot })).rejects.toThrow(
       /fixed/i,
     );
+    await expect(backend.callTool('detect_changes', { worktree: otherRoot })).rejects.toThrow(/fixed/i);
     await expect(backend.callTool('list_repos', {})).rejects.toThrow(/not available/i);
     await expect(backend.callTool('rename', { new_name: 'replacement' })).rejects.toThrow(
       /not available/i,

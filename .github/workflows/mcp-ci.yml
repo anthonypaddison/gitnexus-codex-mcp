@@ -1,0 +1,64 @@
+name: Source MCP CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  macos-mcp:
+    name: macOS arm64 · Node 22 · MCP
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      GITNEXUS_BUILD_CLI_ONLY: '1'
+      GITNEXUS_LBUG_EXTENSION_INSTALL: load-only
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+          architecture: arm64
+          package-manager-cache: false
+      - name: Verify PR revision and runtime
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$PR_HEAD"
+          test "$(uname -m)" = arm64
+          printf 'Testing PR head %s\n' "$PR_HEAD"
+          node --version
+      - name: Install locked dependencies and prepare native bindings
+        run: |
+          npm ci --prefix gitnexus-shared --ignore-scripts --no-audit --no-fund
+          npm ci --prefix gitnexus --ignore-scripts --no-audit --no-fund
+          cp gitnexus/node_modules/@ladybugdb/core-darwin-arm64/lbugjs.node \
+            gitnexus/node_modules/@ladybugdb/core/lbugjs.node
+          node_prefix="$(dirname "$(dirname "$(node -p 'process.execPath')")")"
+          test -f "$node_prefix/include/node/node.h"
+          (cd gitnexus/node_modules/tree-sitter-kotlin && \
+            /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' \
+            node ../node-gyp/bin/node-gyp.js rebuild --nodedir="$node_prefix")
+      - name: Build CLI and typecheck
+        run: |
+          /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' npm run build --prefix gitnexus
+          node gitnexus/node_modules/typescript/bin/tsc --noEmit -p gitnexus/tsconfig.json
+      - name: Run focused MCP tests without FTS provisioning
+        working-directory: gitnexus
+        run: |
+          node node_modules/vitest/vitest.mjs run --configLoader runner --no-cache --maxWorkers=2 \
+            test/unit/context-refresh.test.ts \
+            test/unit/context-live-freshness.test.ts \
+            test/unit/contexts-config.test.ts \
+            test/unit/hardened-mcp.test.ts \
+            test/unit/hardened-local-backend.test.ts \
+            test/unit/staleness.test.ts \
+            test/unit/lbug-checkpoint.test.ts \
+            test/unit/lbug-checkpoint-lifecycle.test.ts \
+            test/integration/mcp/hardened-server.test.ts
+          echo 'Real FTS query and index-build acceptance requires a separately provisioned FTS extension.'
