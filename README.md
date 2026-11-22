@@ -12,12 +12,14 @@ without a global configuration change.
 
 - [Install, configure, and remove the integration](LOCAL_SAFE.md)
 - [Experimental release notes](#experimental-prerelease)
+- [Stable release gates](STABLE_READINESS.md)
 - [Security reporting and scope](SECURITY.md)
 - [Licence and required upstream notice](LICENSE)
 
 ## Experimental prerelease
 
-Proposed source tag `v0.1.0-experimental.1`. The local CLI still reports the
+[Published source tag `v0.1.0-experimental.1`](https://github.com/anthonypaddison/gitnexus-codex-mcp/releases/tag/v0.1.0-experimental.1).
+The local CLI still reports the
 inherited GitNexus version `1.6.5`; use the Git tag and commit to identify the fork
 build. There is no fork npm release, container image, or hosted service.
 Installation requires an explicit dependency install and a compatible local
