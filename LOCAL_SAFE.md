@@ -16,7 +16,7 @@ Disabled runtime paths:
 - CDN scripts in generated wiki HTML
 - Persisted MCP `npx` fallback entries
 - Hook `npx` fallback entries
-- DuckDB/Ladybug extension installation
+- Automatic DuckDB/Ladybug extension installation in the supported MCP and refresh paths
 - Build/test helper `npx` invocations
 - Automatic web dependency install from the build script
 - Docker build recipes that ran package-manager and OS-package network operations
@@ -54,8 +54,10 @@ outside this installation. Windows and Linux have no release acceptance.
 Refresh requires macOS `sandbox-exec` or a functioning Linux
 `/usr/bin/bwrap`; the Linux path remains unverified.
 
-Once the release exists, use its pinned source tag and compare the checkout's
-commit to the SHA in the authenticated release notes before installing:
+Install from the pinned source tag. Compare the checkout's commit to the SHA
+in the official release notes before installing. If using the attached source
+archive, verify its published SHA256 before extraction and start the build at
+`node --version` inside the extracted directory.
 
 ```sh
 git clone --branch v0.1.0-experimental.1 --single-branch \
@@ -63,6 +65,9 @@ git clone --branch v0.1.0-experimental.1 --single-branch \
 cd gitnexus-codex-mcp
 git rev-parse HEAD
 node --version
+test "$(node -p 'process.versions.node.split(".")[0]')" = 22
+test "$(node -p 'process.platform + ":" + process.arch')" = darwin:arm64
+(xcode-select -p && xcrun --find clang)
 (cd gitnexus-shared && npm ci --ignore-scripts)
 (cd gitnexus && npm ci --ignore-scripts)
 cp gitnexus/node_modules/@ladybugdb/core-darwin-arm64/lbugjs.node \
@@ -84,24 +89,58 @@ blocked. The CLI build requires no web dependencies.
 Use the absolute path to this checkout and your Node executable in Codex.
 Avoid the unqualified npm package and inherited upstream install commands.
 
-For FTS, provision the official extension matching the locked
-`@ladybugdb/core` native engine and OS/architecture before indexing. Consult
-[Ladybug's extension setup](https://docs.ladybugdb.com/extensions/) and
-use its matching native release to explicitly install FTS into the same user's
-cache. Fetching an extension is a separate operator action. The fork uses
-load-only mode, so a missing or incompatible extension causes indexing to fail
-or keyword features to degrade. Do not substitute an unverified native library.
+For FTS, run the bundled installer explicitly from the source root. This
+fetches from [Ladybug's official extension service](https://docs.ladybugdb.com/extensions/)
+for the exact engine loaded by this build. The native engine selects the cache
+directory and extension version. Run this under the same account that will
+run the Codex integration. Use the same Node 22 binary throughout.
+
+```sh
+node gitnexus/scripts/install-duckdb-extension.mjs fts 268435456
+```
+
+Before indexing, verify that the native binding can load FTS under the same
+account. This check opens an in-memory database and uses load-only behaviour:
+
+```sh
+(cd gitnexus && node --input-type=module <<'JS'
+import { createRequire } from 'node:module';
+const { Database, Connection, VERSION } = createRequire(import.meta.url)('@ladybugdb/core');
+const db = new Database(':memory:');
+try {
+  const connection = new Connection(db);
+  try {
+    const result = await connection.query('LOAD EXTENSION fts');
+    await result.close();
+    console.log(`LadybugDB ${VERSION}: FTS load succeeded`);
+  } finally {
+    await connection.close();
+  }
+} finally {
+  await db.close();
+}
+JS
+)
+```
+
+If the download or load check fails, pause before indexing. Check network access
+to the official extension service, native binding compatibility and which
+account runs Codex. The hardened MCP and manual refresh continue to use
+load-only mode.
 
 ### Set up and query one approved context
 
 Choose a noncommercial repository you control and keep the snapshot and policy
 outside repositories you share. The following commands use the fictional
-`$HOME/Projects/example`. Run from the fork checkout:
+`$HOME/Projects/example`. Use canonical paths for approval, indexing and
+policy storage. Run from the fork checkout:
 
 ```sh
 umask 077
-CLI="$PWD/gitnexus/dist/cli/index.js"
+CLI="$(pwd -P)/gitnexus/dist/cli/index.js"
 DATA="$HOME/.gitnexus"
+mkdir -p "$DATA"
+DATA="$(cd "$DATA" && pwd -P)"
 POLICY="$DATA/contexts.local.yaml"
 SNAPSHOTS="$DATA/snapshots"
 LIVE="$HOME/Projects/example"
@@ -124,6 +163,10 @@ update the local registry and candidate's Git exclusion. Setup only discovers
 candidates. The CLI writes an owner-only policy with the correct root and
 filesystem identity. See the optional example mapping below for freshness and
 manual refresh.
+
+If status reports `incompatible` directly after indexing, make sure the
+index was built using the same canonical path that was approved. On macOS,
+for example, a temporary path under `/tmp` can resolve to `/private/tmp`.
 
 Back up the project's existing `.codex/config.toml`, if present. In the
 trusted project where you want the integration, add the following table using
@@ -188,12 +231,17 @@ uncommitted edits or trigger indexing.
 ### Refresh one approved snapshot manually
 
 ```bash
-gitnexus contexts --config /path/to/contexts.yaml refresh example --expect-head <full-live-commit>
-gitnexus contexts --config /path/to/contexts.yaml status
+node "$CLI" contexts --config "$POLICY" refresh example --expect-head FULL_LIVE_COMMIT
+node "$CLI" contexts --config "$POLICY" status
 ```
 
-Run the built local CLI on macOS with the system sandbox and a compatible
-LadybugDB FTS extension already in the local cache. The alias must be approved in
+Run the built local CLI on macOS with the system sandbox, a compatible
+LadybugDB FTS extension already in the local cache and a selected Apple
+developer toolchain whose Git passes signature verification. From a normal
+Terminal, verify `xcode-select -p`, `xcrun --find git` and
+`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/true`.
+If the host blocks the system sandbox, refresh stops before replacing the
+approved snapshot. The alias must be approved in
 the active context and have a `liveRoot`. Refresh materializes the specified
 commit under the approved snapshot parent and runs `analyze --index-only` with
 network access blocked and a private registry. It validates the index and a
@@ -227,3 +275,10 @@ The real context integration test requires a compiled checkout supplied as
 `GITNEXUS_CONTEXT_TEST_APP` and a compatible, already-provisioned FTS extension.
 Use an isolated build if the checkout currently serves an installed integration.
 The test creates and cleans up disposable synthetic repositories and indexes.
+
+```sh
+(cd gitnexus && GITNEXUS_CONTEXT_TEST_APP="$(pwd -P)" \
+  node node_modules/vitest/vitest.mjs run --configLoader runner --no-cache \
+  test/integration/mcp/context-server.test.ts \
+  test/integration/lbug-close-handle-release.test.ts)
+```
